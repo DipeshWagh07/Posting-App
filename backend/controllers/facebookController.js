@@ -1,234 +1,252 @@
+import axios from 'axios';
 import {
   getFacebookAuthUrl,
   getFacebookAccessToken,
   getFacebookPages,
   getFacebookUserInfo,
   postToFacebookPage,
+  verifyFacebookToken
 } from "../utils/facebookAuth.js";
 
-export const startFacebookAuth = (req, res) => {
-  const authUrl = getFacebookAuthUrl();
-  res.redirect(authUrl);
+// Environment variables
+const CLIENT_ID = process.env.FACEBOOK_CLIENT_ID || "1057966605784043";
+const CLIENT_SECRET = process.env.FACEBOOK_CLIENT_SECRET || "d84933382c363ca71fcb146268ff0cdc";
+const FRONTEND_REDIRECT = process.env.FRONTEND_REDIRECT_URI || "http://localhost:3000";
+
+// Helper function for consistent error responses
+const createErrorResponse = (error, defaultMessage = "An error occurred") => {
+  const fbError = error.response?.data?.error || {};
+  return {
+    error: fbError.message || error.message || defaultMessage,
+    code: fbError.code || "UNKNOWN_ERROR",
+    fbtrace_id: fbError.fbtrace_id,
+    details: error.details,
+    stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+  };
 };
 
-// GET callback from Facebook
+export const startFacebookAuth = (req, res) => {
+  try {
+    const { state } = req.query;
+    const authUrl = getFacebookAuthUrl(state);
+    res.json({ 
+      authUrl,
+      expiresIn: 3600 // 1 hour validity
+    });
+  } catch (error) {
+    console.error("Auth URL generation error:", error);
+    res.status(500).json(createErrorResponse(error, "Failed to generate auth URL"));
+  }
+};
+
 export const facebookCallback = async (req, res) => {
-  const { code, state } = req.query;
+  const { code, error: fbError, error_reason: errorReason, state } = req.query;
+
+  if (fbError) {
+    console.error('Facebook OAuth error:', { fbError, errorReason, state });
+    return res.redirect(
+      `${FRONTEND_REDIRECT}/auth-error?provider=facebook&error=${encodeURIComponent(errorReason || 'unknown')}&state=${state || ''}`
+    );
+  }
 
   if (!code) {
-    return res.status(400).send("Authorization code not provided.");
+    return res.status(400).json(createErrorResponse(new Error("Authorization code not provided")));
   }
 
   try {
+    // 1. First get the access token
     const userAccessToken = await getFacebookAccessToken(code);
-    const userInfo = await getFacebookUserInfo(userAccessToken);
-    const pages = await getFacebookPages(userAccessToken);
+    
+    // 2. Then get user info and pages in parallel
+    const [userInfo, pages] = await Promise.all([
+      getFacebookUserInfo(userAccessToken),
+      getFacebookPages(userAccessToken)
+    ]);
 
-    // Store pages with their access tokens for later use
-    // You might want to store this in a database or session
+    // Verify token is valid before proceeding
+    const tokenInfo = await verifyFacebookToken(userAccessToken);
+    if (!tokenInfo.is_valid) {
+      throw new Error("Invalid access token received from Facebook");
+    }
 
-    // Redirect to frontend with user data (adjust URL for production)
-    const redirectUrl = `http://localhost:3000/dashboard?platform=facebook&accessToken=${userAccessToken}&userId=${
-      userInfo.id
-    }&userName=${encodeURIComponent(userInfo.name)}`;
-    res.redirect(redirectUrl);
-  } catch (err) {
-    console.error("Facebook authentication failed:", err);
-    res.status(500).send("Failed to authenticate with Facebook.");
+    const redirectUrl = new URL(`${FRONTEND_REDIRECT}/dashboard`);
+    redirectUrl.searchParams.set('platform', 'facebook');
+    redirectUrl.searchParams.set('accessToken', userAccessToken);
+    redirectUrl.searchParams.set('userId', userInfo.id);
+    redirectUrl.searchParams.set('userName', encodeURIComponent(userInfo.name));
+    if (state) redirectUrl.searchParams.set('state', state);
+
+    res.redirect(redirectUrl.toString());
+  } catch (error) {
+    console.error("Facebook authentication failed:", error);
+    res.redirect(
+      `${FRONTEND_REDIRECT}/auth-error?provider=facebook&error=${encodeURIComponent(error.message)}&state=${state || ''}`
+    );
   }
 };
 
-// POST endpoint for frontend to exchange code for access token
 export const handleFacebookCodeExchange = async (req, res) => {
   const { code } = req.body;
 
   if (!code) {
-    return res.status(400).json({ error: "Missing authorization code." });
+    return res.status(400).json(createErrorResponse(new Error("Missing authorization code")));
   }
 
   try {
+    // 1. First get the access token
     const userAccessToken = await getFacebookAccessToken(code);
-    const userInfo = await getFacebookUserInfo(userAccessToken);
-    const pages = await getFacebookPages(userAccessToken);
+    
+    // 2. Then get user info and pages in parallel
+    const [userInfo, pages] = await Promise.all([
+      getFacebookUserInfo(userAccessToken),
+      getFacebookPages(userAccessToken)
+    ]);
 
     res.json({
+      success: true,
       accessToken: userAccessToken,
       userInfo,
-      pages,
+      pages: pages.map(p => ({
+        id: p.id,
+        name: p.name,
+        category: p.category,
+        canPost: p.canPost
+      }))
     });
-  } catch (err) {
-    console.error(
-      "Facebook token exchange failed:",
-      err.response?.data || err.message
-    );
-    res.status(500).json({ error: "Token exchange failed." });
+  } catch (error) {
+    console.error("Facebook token exchange failed:", error);
+    res.status(500).json(createErrorResponse(error, "Token exchange failed"));
   }
 };
 
 export const handleFacebookPost = async (req, res) => {
-    try {
-      const { userAccessToken, pageId, message, imageUrl } = req.body;
-  
-      // Ensure pageId is string for comparison
-      const stringPageId = String(pageId);
-      console.log(`[DEBUG] Looking for page ID: ${stringPageId}`);
-  
-      // Get pages with debug info
-      const pages = await getFacebookPages(userAccessToken);
-      console.log('[DEBUG] Available pages:', pages);
-  
-      // In handleFacebookPost controller
-      const page = pages.find(p => p.id === pageId);
-      if (!page?.access_token) {
-        throw new Error("No page access token available");
-      }
-  
-      // Find page with strict string comparison
-      const targetPage = pages.find(page => {
-        const match = String(page.id) === stringPageId;
-        console.log(`[DEBUG] Comparing ${page.id} (${page.name}) -> ${match}`);
-        return match;
-      });
-  
-      if (!targetPage) {
-        console.log('[DEBUG] Page not found in available pages:', {
-          requestedId: stringPageId,
-          availableIds: pages.map(p => p.id)
-        });
-        return res.status(404).json({
-          error: "Page not found in your accessible pages",
-          requestedPageId: stringPageId,
-          availablePages: pages.map(p => ({ id: p.id, name: p.name }))
-        });
-      }
-  
-      if (!targetPage.access_token) {
-        console.log('[DEBUG] No access token for page:', targetPage.name);
-        return res.status(403).json({
-          error: "No access token for this page",
-          solution: "Re-authenticate with Facebook and ensure all permissions are granted"
-        });
-      }
-  
-      // Debug the page token
-      try {
-        const debug = await axios.get(`https://graph.facebook.com/debug_token`, {
-          params: {
-            input_token: targetPage.access_token,
-            access_token: `${clientId}|${clientSecret}`
-          }
-        });
-        console.log('[DEBUG] Token debug info:', debug.data);
-      } catch (debugError) {
-        console.warn('[DEBUG] Token debug failed:', debugError.message);
-      }
-  
-      // Prepare post data
-      const postData = { message, ...(imageUrl && { picture: imageUrl }) };
-  
-      // Make the post
-      // Use the page's access token, not the user's
-      const result = await postToFacebookPage(page.access_token, pageId, postData);
-  
-      return res.json({ success: true, postId: result.id });
-  
-    } catch (error) {
-      console.error('[DEBUG] Full post error:', {
-        message: error.message,
-        facebookError: error.response?.data?.error,
-        stack: error.stack
-      });
-  
-      // Handle specific Facebook errors
-      const fbError = error.response?.data?.error;
-      if (fbError?.code === 368) {
-        return res.status(429).json({
-          error: "Temporarily blocked by Facebook",
-          details: "You've been temporarily blocked from posting. Please wait 24-48 hours before trying again.",
-          facebookError: fbError.message,
-          suggestion: "Try posting different content and space out your posts more."
-        });
-      }
-  
-      return res.status(500).json({
-        error: "Failed to create post",
-        details: fbError?.message || error.message,
-        code: fbError?.code
+  try {
+    const { userAccessToken, pageId, message, imageUrl } = req.body;
+
+    if (!userAccessToken || !pageId) {
+      return res.status(400).json(createErrorResponse(new Error("userAccessToken and pageId are required")));
+    }
+
+    // Get pages and verify access
+    const pages = await getFacebookPages(userAccessToken);
+    const page = pages.find(p => p.id === pageId);
+
+    if (!page) {
+      return res.status(404).json({
+        error: "Page not found",
+        availablePages: pages.map(p => ({ id: p.id, name: p.name }))
       });
     }
-  };
 
-// Helper endpoint to get available pages for a user
+    if (!page.access_token) {
+      return res.status(403).json(createErrorResponse(new Error("No access token for this page")));
+    }
+
+    // Debug token info (logged but not exposed to client)
+    try {
+      const debugInfo = await verifyFacebookToken(page.access_token);
+      console.log('[DEBUG] Token info:', {
+        isValid: debugInfo.is_valid,
+        scopes: debugInfo.scopes,
+        expiresAt: debugInfo.expires_at
+      });
+    } catch (debugError) {
+      console.warn('[DEBUG] Token verification failed:', debugError.message);
+    }
+
+    // Create the post
+    const result = await postToFacebookPage(page.access_token, pageId, {
+      message,
+      imageUrl
+    });
+
+    res.json({
+      success: true,
+      postId: result.id,
+      type: result.type || 'post'
+    });
+
+  } catch (error) {
+    console.error('[DEBUG] Facebook post error:', error);
+
+    // Handle specific Facebook errors
+    if (error.response?.data?.error?.code === 368) {
+      return res.status(429).json({
+        error: "Temporarily blocked by Facebook",
+        details: "Please wait 24-48 hours before trying again",
+        code: "TEMPORARY_BLOCK"
+      });
+    }
+
+    res.status(500).json(createErrorResponse(error, "Failed to create post"));
+  }
+};
+
 export const getFacebookUserPages = async (req, res) => {
   try {
     const { userAccessToken } = req.body;
 
     if (!userAccessToken) {
-      return res.status(400).json({ error: "Missing user access token." });
+      return res.status(400).json(createErrorResponse(new Error("Missing user access token")));
     }
 
     const pages = await getFacebookPages(userAccessToken);
 
-    // Return simplified page info
-    const pageList =
-      pages.data?.map((page) => ({
-        id: page.id,
-        name: page.name,
-        category: page.category,
-        hasAccessToken: !!page.access_token,
-        tasks: page.tasks || [],
-      })) || [];
-
     res.json({
       success: true,
-      pages: pageList,
+      pages: pages.map(p => ({
+        id: p.id,
+        name: p.name,
+        category: p.category,
+        canPost: p.canPost,
+        hasAccessToken: !!p.access_token
+      }))
     });
-  } catch (err) {
-    console.error("Failed to get Facebook pages:", err);
-    res.status(500).json({
-      error: "Failed to get Facebook pages",
-      details: err.message,
-    });
+  } catch (error) {
+    console.error("Failed to get Facebook pages:", error);
+    res.status(500).json(createErrorResponse(error, "Failed to get Facebook pages"));
   }
 };
 
-// Debug endpoint to test page access
 export const debugFacebookPageAccess = async (req, res) => {
   try {
     const { userAccessToken, pageId } = req.body;
 
     if (!userAccessToken || !pageId) {
-      return res.status(400).json({ error: "Missing required fields." });
+      return res.status(400).json(createErrorResponse(new Error("Missing required fields")));
     }
 
-    // Get pages to find the specific page's access token
     const pages = await getFacebookPages(userAccessToken);
-    const targetPage = pages.data?.find((page) => page.id === pageId);
+    const page = pages.find(p => p.id === pageId);
 
-    if (!targetPage) {
+    if (!page) {
       return res.status(404).json({
         error: "Page not found",
-        availablePages: pages.data?.map((p) => ({ id: p.id, name: p.name })),
+        availablePages: pages.map(p => ({ id: p.id, name: p.name }))
       });
     }
 
-    const debugInfo = {
-      pageId: targetPage.id,
-      pageName: targetPage.name,
-      hasPageAccessToken: !!targetPage.access_token,
-      permissions: targetPage.tasks || [],
-      category: targetPage.category,
-    };
+    // Verify page token
+    let tokenInfo = {};
+    try {
+      tokenInfo = await verifyFacebookToken(page.access_token);
+    } catch (tokenError) {
+      console.warn("Token verification failed:", tokenError.message);
+    }
 
     res.json({
       success: true,
-      debugInfo,
+      debugInfo: {
+        pageId: page.id,
+        pageName: page.name,
+        hasValidToken: tokenInfo.is_valid === true,
+        tokenExpiresAt: tokenInfo.expires_at,
+        permissions: page.tasks || [],
+        category: page.category
+      }
     });
-  } catch (err) {
-    console.error("Debug failed:", err);
-    res.status(500).json({
-      error: "Debug failed",
-      details: err.message,
-    });
+  } catch (error) {
+    console.error("Debug failed:", error);
+    res.status(500).json(createErrorResponse(error, "Debug failed"));
   }
 };

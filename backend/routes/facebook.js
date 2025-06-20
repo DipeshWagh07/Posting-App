@@ -1,200 +1,256 @@
 import express from 'express';
-import { 
-  getFacebookPages, 
-  getFacebookUserInfo, 
-  postToFacebookPage, 
-  postToFacebookTimeline,
-  getFacebookPageInsights 
+import {
+  getFacebookAuthUrl,
+  getFacebookAccessToken,
+  getFacebookPages,
+  getFacebookUserInfo,
+  postToFacebookPage,
+  verifyFacebookToken
 } from '../utils/facebookAuth.js';
 
 const router = express.Router();
 
-// Get user's Facebook pages - Support both authorization methods
-router.get('/pages', async (req, res) => {
-  let accessToken = req.headers.authorization?.replace('Bearer ', '');
-  
-  // If not found in header, try to get from query params
-  if (!accessToken) {
-    accessToken = req.query.access_token;
-  }
-
-  if (!accessToken) {
-    return res.status(400).json({ error: 'Access token is required' });
-  }
-
-  try {
-    const pages = await getFacebookPages(accessToken);
-    res.json({ pages });
-  } catch (error) {
-    console.error('Error fetching Facebook pages:', error.response?.data || error.message);
-    res.status(500).json({ error: 'Failed to retrieve Facebook pages' });
-  }
+// Health check endpoint
+router.get('/status', (req, res) => {
+  res.json({ 
+    status: 'active',
+    apiVersion: 'v18.0',
+    timestamp: new Date().toISOString()
+  });
 });
 
-// POST method for pages (for compatibility)
-router.post('/pages', async (req, res) => {
-  const { accessToken } = req.body;
-
-  if (!accessToken) {
-    return res.status(400).json({ error: 'Access token is required' });
-  }
-
+// Auth initiation with state validation
+router.get('/auth', (req, res) => {
   try {
-    const pages = await getFacebookPages(accessToken);
-    res.json({ pages });
-  } catch (error) {
-    console.error('Error fetching Facebook pages:', error.response?.data || error.message);
-    res.status(500).json({ error: 'Failed to retrieve Facebook pages' });
-  }
-});
-
-// Get user info
-router.post('/userinfo', async (req, res) => {
-  const { accessToken } = req.body;
-
-  if (!accessToken) {
-    return res.status(400).json({ error: 'Access token is required' });
-  }
-
-  try {
-    const userInfo = await getFacebookUserInfo(accessToken);
-    res.json({ userInfo });
-  } catch (error) {
-    console.error('Error fetching Facebook user info:', error.response?.data || error.message);
-    res.status(500).json({ error: 'Failed to retrieve user info' });
-  }
-});
-
-// Post to Facebook page
-router.post('/post', async (req, res) => {
-  const { accessToken, pageId, message, imageUrl, link, picture } = req.body;
-
-  if (!accessToken || !pageId || !message) {
-    return res.status(400).json({ error: 'Access token, page ID, and message are required' });
-  }
-
-  try {
-    // Get the page access token for the specific page
-    const pages = await getFacebookPages(accessToken);
-    const selectedPage = pages.find(page => page.id === pageId);
+    const { state, redirect_uri } = req.query;
     
-    if (!selectedPage) {
-      return res.status(404).json({ error: 'Page not found' });
+    // Validate state if provided
+    if (state && state.length > 100) {
+      throw new Error("Invalid state parameter");
+    }
+    
+    const authUrl = getFacebookAuthUrl(state);
+    res.json({ 
+      authUrl,
+      expiresIn: 3600 // 1 hour validity
+    });
+  } catch (error) {
+    console.error('Auth URL generation error:', error);
+    res.status(500).json({ 
+      error: 'Failed to generate auth URL',
+      details: error.message,
+      code: 'AUTH_URL_ERROR'
+    });
+  }
+});
+
+// Callback handler with enhanced error handling
+router.get('/callback', async (req, res) => {
+  const { code, state, error: fbError, error_reason: errorReason } = req.query;
+
+  // Handle Facebook errors
+  if (fbError) {
+    console.error('Facebook OAuth error:', { fbError, errorReason, state });
+    return res.redirect(
+      `http://localhost:3000/auth-error?provider=facebook&error=${encodeURIComponent(errorReason || 'unknown')}&state=${state || ''}`
+    );
+  }
+
+  // Validate required parameters
+  if (!code) {
+    return res.status(400).json({
+      error: "Authorization code not provided",
+      code: "MISSING_CODE"
+    });
+  }
+
+  try {
+    // Exchange code for token
+    const userAccessToken = await getFacebookAccessToken(code);
+    
+    // Get user info and pages
+    const [userInfo, pages] = await Promise.all([
+      getFacebookUserInfo(userAccessToken),
+      getFacebookPages(userAccessToken)
+    ]);
+
+    // Prepare success URL
+    const redirectUrl = new URL('http://localhost:3000/auth/success');
+    redirectUrl.searchParams.set('provider', 'facebook');
+    redirectUrl.searchParams.set('accessToken', userAccessToken);
+    redirectUrl.searchParams.set('userId', userInfo.id);
+    redirectUrl.searchParams.set('userName', encodeURIComponent(userInfo.name));
+    redirectUrl.searchParams.set('pages', JSON.stringify(pages));
+    if (state) redirectUrl.searchParams.set('state', state);
+
+    res.redirect(redirectUrl.toString());
+  } catch (err) {
+    console.error("Facebook authentication failed:", err);
+    const errorDetails = err.details || {
+      type: 'UNKNOWN_ERROR',
+      message: err.message
+    };
+    
+    res.redirect(
+      `http://localhost:3000/auth-error?provider=facebook&error=${encodeURIComponent(errorDetails.message)}&code=${errorDetails.type}&state=${state || ''}`
+    );
+  }
+});
+
+// Token verification endpoint
+router.get('/verify', async (req, res) => {
+  const accessToken = req.headers.authorization?.replace('Bearer ', '') || req.query.access_token;
+
+  if (!accessToken) {
+    return res.status(400).json({ 
+      error: 'Access token is required',
+      code: 'MISSING_TOKEN'
+    });
+  }
+
+  try {
+    const tokenInfo = await verifyFacebookToken(accessToken);
+    res.json({
+      isValid: tokenInfo.is_valid,
+      expiresAt: tokenInfo.expires_at,
+      scopes: tokenInfo.scopes,
+      userId: tokenInfo.user_id
+    });
+  } catch (error) {
+    console.error('Token verification failed:', error);
+    res.status(500).json({ 
+      error: 'Token verification failed',
+      details: error.message,
+      code: 'VERIFICATION_FAILED'
+    });
+  }
+});
+
+// Unified pages endpoint with caching headers
+router.get('/pages', async (req, res) => {
+  const accessToken = req.headers.authorization?.replace('Bearer ', '') || req.query.access_token;
+
+  if (!accessToken) {
+    return res.status(400).json({ 
+      error: 'Access token is required',
+      code: 'MISSING_TOKEN'
+    });
+  }
+
+  try {
+    const pages = await getFacebookPages(accessToken);
+    
+    // Set cache headers (5 minutes)
+    res.set('Cache-Control', 'public, max-age=300');
+    
+    res.json({ 
+      success: true,
+      count: pages.length,
+      pages: pages.map(p => ({
+        id: p.id,
+        name: p.name,
+        category: p.category,
+        canPost: p.canPost,
+        instagramConnected: !!p.instagram_business_account
+      }))
+    });
+  } catch (error) {
+    console.error('Error fetching Facebook pages:', error);
+    const errorDetails = error.details || {
+      type: 'UNKNOWN_ERROR',
+      message: error.message
+    };
+    
+    res.status(500).json({ 
+      error: 'Failed to retrieve Facebook pages',
+      details: errorDetails.message,
+      code: errorDetails.type,
+      solution: errorDetails.solution || "Check token validity and permissions"
+    });
+  }
+});
+
+// Enhanced post creation with media handling
+router.post('/post', async (req, res) => {
+  const { userAccessToken, pageId, message, imageUrl, link } = req.body;
+
+  // Validate required parameters
+  if (!userAccessToken || !pageId) {
+    return res.status(400).json({ 
+      error: 'userAccessToken and pageId are required',
+      code: 'MISSING_REQUIRED_FIELDS',
+      required_fields: {
+        userAccessToken: 'string',
+        pageId: 'string',
+        message: 'string (optional)',
+        imageUrl: 'string (optional)',
+        link: 'string (optional)'
+      }
+    });
+  }
+
+  try {
+    // Get pages to find the specific page's access token
+    const pages = await getFacebookPages(userAccessToken);
+    const page = pages.find(p => p.id === pageId);
+
+    if (!page) {
+      return res.status(404).json({
+        error: "Page not found in user's pages",
+        code: 'PAGE_NOT_FOUND',
+        availablePages: pages.map(p => ({ id: p.id, name: p.name }))
+      });
     }
 
-    const pageAccessToken = selectedPage.access_token;
+    if (!page.access_token) {
+      return res.status(403).json({
+        error: "No access token available for this page",
+        code: 'MISSING_PAGE_TOKEN',
+        solution: "Re-authenticate with Facebook and ensure all permissions are granted"
+      });
+    }
 
-    const result = await postToFacebookPage(pageAccessToken, pageId, {
+    // Validate media URL if provided
+    if (imageUrl) {
+      try {
+        new URL(imageUrl);
+      } catch (e) {
+        return res.status(400).json({
+          error: "Invalid image URL",
+          code: 'INVALID_MEDIA_URL'
+        });
+      }
+    }
+
+    // Create the post
+    const result = await postToFacebookPage(page.access_token, pageId, {
       message,
-      link: link || imageUrl,
-      picture: picture || imageUrl
+      imageUrl,
+      link
     });
+
+    res.json({
+      success: true,
+      postId: result.post_id,
+      pageId,
+      type: result.type,
+      message: `Successfully posted ${result.type} to Facebook page`
+    });
+  } catch (error) {
+    console.error('Error posting to Facebook:', error);
+    const errorDetails = error.details || {
+      type: 'UNKNOWN_ERROR',
+      message: error.message
+    };
     
-    res.json({ 
-      success: true, 
-      postId: result.id,
-      message: 'Successfully posted to Facebook page'
-    });
-  } catch (error) {
-    console.error('Error posting to Facebook page:', error.response?.data || error.message);
-    res.status(500).json({ 
-      error: 'Failed to post to Facebook page',
-      details: error.response?.data || error.message
-    });
-  }
-});
-
-// Alternative endpoint for posting (for compatibility)
-router.post('/post-to-facebook', async (req, res) => {
-  const { pageAccessToken, pageId, message, link, picture } = req.body;
-
-  if (!pageAccessToken || !pageId || !message) {
-    return res.status(400).json({ error: 'Page access token, page ID, and message are required' });
-  }
-
-  try {
-    const result = await postToFacebookPage(pageAccessToken, pageId, {
-      message,
-      link,
-      picture
-    });
+    const statusCode = errorDetails.type === 'TEMPORARY_BLOCK' ? 429 : 500;
     
-    res.json({ 
-      success: true, 
-      postId: result.id,
-      message: 'Successfully posted to Facebook page'
+    res.status(statusCode).json({
+      error: "Failed to create post",
+      details: errorDetails.message,
+      code: errorDetails.type,
+      solution: errorDetails.solution || "Check permissions and content guidelines"
     });
-  } catch (error) {
-    console.error('Error posting to Facebook page:', error.response?.data || error.message);
-    res.status(500).json({ 
-      error: 'Failed to post to Facebook page',
-      details: error.response?.data || error.message
-    });
-  }
-});
-
-// Post to user's timeline
-router.post('/post-timeline', async (req, res) => {
-  const { accessToken, message, link, picture } = req.body;
-
-  if (!accessToken || !message) {
-    return res.status(400).json({ error: 'Access token and message are required' });
-  }
-
-  try {
-    const result = await postToFacebookTimeline(accessToken, {
-      message,
-      link,
-      picture
-    });
-    
-    res.json({ 
-      success: true, 
-      postId: result.id,
-      message: 'Successfully posted to Facebook timeline'
-    });
-  } catch (error) {
-    console.error('Error posting to Facebook timeline:', error.response?.data || error.message);
-    res.status(500).json({ 
-      error: 'Failed to post to Facebook timeline',
-      details: error.response?.data || error.message
-    });
-  }
-});
-
-// Get page insights/analytics
-router.post('/page-insights', async (req, res) => {
-  const { pageAccessToken, pageId } = req.body;
-
-  if (!pageAccessToken || !pageId) {
-    return res.status(400).json({ error: 'Page access token and page ID are required' });
-  }
-
-  try {
-    const insights = await getFacebookPageInsights(pageAccessToken, pageId);
-    res.json({ insights });
-  } catch (error) {
-    console.error('Error fetching Facebook page insights:', error.response?.data || error.message);
-    res.status(500).json({ 
-      error: 'Failed to retrieve page insights',
-      details: error.response?.data || error.message
-    });
-  }
-});
-
-// Status check endpoint
-router.get('/status', async (req, res) => {
-  const accessToken = req.headers.authorization?.replace('Bearer ', '');
-  
-  if (!accessToken) {
-    return res.status(401).json({ authenticated: false });
-  }
-
-  try {
-    await getFacebookUserInfo(accessToken);
-    res.json({ authenticated: true });
-  } catch (error) {
-    res.json({ authenticated: false });
   }
 });
 
