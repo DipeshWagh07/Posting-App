@@ -204,7 +204,7 @@ const Dashboard = () => {
   };
 
   const connectFacebook = () => {
-    const CLIENT_ID = "2056002844893910";
+    const CLIENT_ID = "1057966605784043";
     const REDIRECT_URI = "http://localhost:3000/auth/facebook/callback";
     const scope = "pages_manage_posts,pages_read_engagement,pages_show_list";
     const state = Math.random().toString(36).substring(2, 15);
