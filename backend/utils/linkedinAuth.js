@@ -5,9 +5,9 @@ import dotenv from "dotenv";
 dotenv.config();
 
 // Get credentials from environment variables
-const clientId ='77igg9177iv3cg';
-const clientSecret = 'WPL_AP1.GNjqyb561TVVw4fl.hq53NA=='
-const redirectUri = 'http://localhost:3000/auth/linkedin/callback';
+const clientId = "77igg9177iv3cg";
+const clientSecret = "WPL_AP1.GNjqyb561TVVw4fl.hq53NA==";
+const redirectUri = "http://localhost:3000/auth/linkedin/callback";
 
 export const generateState = () => crypto.randomBytes(16).toString("hex");
 

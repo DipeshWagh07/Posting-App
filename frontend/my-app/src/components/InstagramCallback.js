@@ -1,22 +1,28 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import axios from 'axios';
+import React, { useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import axios from "axios";
 import "../styles.css";
 
 const InstagramCallback = () => {
   const navigate = useNavigate();
-  const [status, setStatus] = useState('Authenticating with Instagram...');
-  const [error, setError] = useState('');
+  const [status, setStatus] = useState("Authenticating with Instagram...");
+  const [error, setError] = useState("");
   const hasExchangedCode = useRef(false);
-  
+
   useEffect(() => {
-    const fetchAccessToken = async () => {
+    const exchangeToken = async () => {
       const urlParams = new URLSearchParams(window.location.search);
-      const code = urlParams.get('code');
-      const state = urlParams.get('state');
+      const code = urlParams.get("code");
+      const state = urlParams.get("state");
+      const error = urlParams.get("error");
+
+      if (error) {
+        setError(`Instagram authentication failed: ${error}`);
+        return;
+      }
 
       if (!code || !state) {
-        setError('Missing code or state in callback URL.');
+        setError("Missing authorization code or state parameter");
         return;
       }
 
@@ -24,28 +30,52 @@ const InstagramCallback = () => {
       hasExchangedCode.current = true;
 
       try {
-        const response = await axios.post('http://localhost:8000/auth/instagram/token', {
-          code,
-          redirectUri: 'http://localhost:3000/auth/instagram/callback',
-        });
+        setStatus("Exchanging authorization code for access token...");
 
-        const { accessToken, userId } = response.data;
+        const response = await axios.post(
+          "http://localhost:10000/auth/instagram/token",
+          {
+            code,
+            redirectUri: "http://localhost:3000/auth/instagram/callback",
+          },
+          {
+            headers: {
+              "Content-Type": "application/json",
+            },
+          }
+        );
 
-        if (accessToken) {
-          localStorage.setItem('instagram_access_token', accessToken);
-          localStorage.setItem('instagram_user_id', userId);
-          setStatus('Instagram authentication successful! Redirecting...');
-          setTimeout(() => navigate('/dashboard'), 1000);
-        } else {
-          setError('No access token received.');
+        if (!response.data.success) {
+          throw new Error(
+            response.data.error || "Invalid response from server"
+          );
         }
+
+        const { userId, expiresIn } = response.data;
+
+        localStorage.setItem("instagram_user_id", userId);
+        localStorage.setItem(
+          "instagram_token_expires",
+          Date.now() + expiresIn * 1000
+        );
+
+        setStatus("Success! Redirecting to dashboard...");
+        setTimeout(() => navigate("/dashboard"), 1500);
       } catch (err) {
-        console.error(err);
-        setError(`Error fetching access token: ${err.response?.data?.error || err.message}`);
+        console.error("Token exchange error:", err.response?.data || err);
+
+        const errMsg =
+          typeof err?.response?.data?.details === "string"
+            ? err.response.data.details
+            : typeof err?.response?.data?.error === "string"
+            ? err.response.data.error
+            : err.message || "Authentication failed";
+
+        setError(errMsg);
       }
     };
 
-    fetchAccessToken();
+    exchangeToken();
   }, [navigate]);
 
   return (
@@ -54,7 +84,10 @@ const InstagramCallback = () => {
         <div className="error-message">
           <h2>Authentication Error</h2>
           <p>{error}</p>
-          <button onClick={() => navigate('/dashboard')} className="return-button">
+          <button
+            onClick={() => navigate("/dashboard")}
+            className="return-button"
+          >
             Return to Dashboard
           </button>
         </div>

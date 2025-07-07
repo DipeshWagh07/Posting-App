@@ -13,11 +13,11 @@ export const initializeAuth = async (req, res) => {
     // Store tokens in both session and cache
     req.session.oauth_token = oauth_token;
     req.session.oauth_token_secret = oauth_token_secret;
-    
+
     // Also store in memory cache as backup
     oauthTokenCache.set(oauth_token, {
       oauth_token_secret,
-      timestamp: Date.now()
+      timestamp: Date.now(),
     });
 
     console.log("OAuth tokens stored in session and cache");
@@ -46,21 +46,25 @@ export const handleCallback = async (req, res) => {
   if (denied) {
     console.log("User denied Twitter authorization");
     return res.redirect(
-      `http://localhost:3000/auth/twitter/callback?error=${encodeURIComponent("Authorization denied")}`
+      `http://localhost:3000/auth/twitter/callback?error=${encodeURIComponent(
+        "Authorization denied"
+      )}`
     );
   }
 
   if (!oauth_token || !oauth_verifier) {
     console.log("Missing OAuth parameters:", { oauth_token, oauth_verifier });
     return res.redirect(
-      `http://localhost:3000/auth/twitter/callback?error=${encodeURIComponent("Missing OAuth parameters")}`
+      `http://localhost:3000/auth/twitter/callback?error=${encodeURIComponent(
+        "Missing OAuth parameters"
+      )}`
     );
   }
 
   try {
     // Try to get oauth_token_secret from session first
     let oauth_token_secret = req.session.oauth_token_secret;
-    
+
     // If not in session, try cache
     if (!oauth_token_secret) {
       const cachedData = oauthTokenCache.get(oauth_token);
@@ -73,9 +77,13 @@ export const handleCallback = async (req, res) => {
     }
 
     if (!oauth_token_secret) {
-      console.log("OAuth session expired or missing from both session and cache");
+      console.log(
+        "OAuth session expired or missing from both session and cache"
+      );
       return res.redirect(
-        `http://localhost:3000/auth/twitter/callback?error=${encodeURIComponent("Session expired. Please try again.")}`
+        `http://localhost:3000/auth/twitter/callback?error=${encodeURIComponent(
+          "Session expired. Please try again."
+        )}`
       );
     }
 
@@ -83,7 +91,9 @@ export const handleCallback = async (req, res) => {
     if (req.session.oauth_token && req.session.oauth_token !== oauth_token) {
       console.log("OAuth token mismatch");
       return res.redirect(
-        `http://localhost:3000/auth/twitter/callback?error=${encodeURIComponent("Invalid OAuth token")}`
+        `http://localhost:3000/auth/twitter/callback?error=${encodeURIComponent(
+          "Invalid OAuth token"
+        )}`
       );
     }
 
@@ -105,16 +115,19 @@ export const handleCallback = async (req, res) => {
     oauthTokenCache.delete(oauth_token);
 
     // Redirect with success and tokens
-    const redirectUrl = `http://localhost:3000/auth/twitter/callback?success=true&access_token=${encodeURIComponent(accessToken)}&access_secret=${encodeURIComponent(accessSecret)}`;
+    const redirectUrl = `http://localhost:3000/auth/twitter/callback?success=true&access_token=${encodeURIComponent(
+      accessToken
+    )}&access_secret=${encodeURIComponent(accessSecret)}`;
     console.log("Redirecting to:", redirectUrl);
     res.redirect(redirectUrl);
-
   } catch (error) {
     console.error("Twitter callback error:", error);
     // Clean up cache on error
     oauthTokenCache.delete(oauth_token);
     res.redirect(
-      `http://localhost:3000/auth/twitter/callback?error=${encodeURIComponent(error.message)}`
+      `http://localhost:3000/auth/twitter/callback?error=${encodeURIComponent(
+        error.message
+      )}`
     );
   }
 };
@@ -218,12 +231,12 @@ export const checkConnectionStatus = async (req, res) => {
 export const postTweet = async (req, res) => {
   try {
     const { content, imageUrl, mediaUrls = [] } = req.body;
-    
+
     // FIX: Get tokens from session properly
     const { twitter_access_token, twitter_access_secret } = req.session;
-    
+
     const allMediaUrls = imageUrl ? [imageUrl, ...mediaUrls] : mediaUrls;
-    
+
     if (!twitter_access_token || !twitter_access_secret) {
       return res.status(401).json({
         success: false,

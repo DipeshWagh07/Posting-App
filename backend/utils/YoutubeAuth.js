@@ -1,27 +1,32 @@
-import { google } from 'googleapis';
-import fs from 'fs';
-import dotenv from 'dotenv';
+import { google } from "googleapis";
+import fs from "fs";
+import dotenv from "dotenv";
 
 // Load environment variables
 dotenv.config();
 
-const clientId = "988078798138-0m6pg1eo48c5r247mvg040pa3qo04mvs.apps.googleusercontent.com";
-const clientSecret ="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";
-const redirectUri = "http://localhost:8000/auth/youtube/callback";
+const clientId =
+  "988078798138-0m6pg1eo48c5r247mvg040pa3qo04mvs.apps.googleusercontent.com";
+const clientSecret = "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";
+const redirectUri = "http://localhost:10000/auth/youtube/callback";
 
-const oauth2Client = new google.auth.OAuth2(clientId, clientSecret, redirectUri);
+const oauth2Client = new google.auth.OAuth2(
+  clientId,
+  clientSecret,
+  redirectUri
+);
 
 // Generate YouTube OAuth URL
 export const getYouTubeAuthUrl = () => {
   const scopes = [
-    'https://www.googleapis.com/auth/youtube.upload',
-    'https://www.googleapis.com/auth/youtube.readonly'
+    "https://www.googleapis.com/auth/youtube.upload",
+    "https://www.googleapis.com/auth/youtube.readonly",
   ];
 
   return oauth2Client.generateAuthUrl({
-    access_type: 'offline',
+    access_type: "offline",
     scope: scopes,
-    prompt: 'consent'
+    prompt: "consent",
   });
 };
 
@@ -39,15 +44,15 @@ export const getYouTubeTokens = async (code) => {
 export const getYouTubeChannelInfo = async (accessToken) => {
   try {
     oauth2Client.setCredentials({ access_token: accessToken });
-    const youtube = google.youtube({ version: 'v3', auth: oauth2Client });
-    
+    const youtube = google.youtube({ version: "v3", auth: oauth2Client });
+
     const response = await youtube.channels.list({
-      part: 'snippet',
-      mine: true
+      part: "snippet",
+      mine: true,
     });
 
     if (!response.data.items || response.data.items.length === 0) {
-      throw new Error('No YouTube channel found');
+      throw new Error("No YouTube channel found");
     }
 
     return response.data.items[0];
@@ -60,21 +65,21 @@ export const getYouTubeChannelInfo = async (accessToken) => {
 export const uploadYouTubeVideo = async (accessToken, videoData, filePath) => {
   try {
     oauth2Client.setCredentials({ access_token: accessToken });
-    const youtube = google.youtube({ version: 'v3', auth: oauth2Client });
+    const youtube = google.youtube({ version: "v3", auth: oauth2Client });
 
     const requestBody = {
       snippet: {
         title: videoData.title,
         description: videoData.description,
         tags: videoData.tags,
-        categoryId: '22', // People & Blogs category
-        defaultLanguage: 'en',
-        defaultAudioLanguage: 'en'
+        categoryId: "22", // People & Blogs category
+        defaultLanguage: "en",
+        defaultAudioLanguage: "en",
       },
       status: {
-        privacyStatus: videoData.privacyStatus || 'public',
-        selfDeclaredMadeForKids: false
-      }
+        privacyStatus: videoData.privacyStatus || "public",
+        selfDeclaredMadeForKids: false,
+      },
     };
 
     const media = {
@@ -82,14 +87,14 @@ export const uploadYouTubeVideo = async (accessToken, videoData, filePath) => {
     };
 
     const response = await youtube.videos.insert({
-      part: 'snippet,status',
+      part: "snippet,status",
       requestBody: requestBody,
       media: media,
     });
 
     return response.data;
   } catch (error) {
-    console.error('YouTube upload error:', error);
+    console.error("YouTube upload error:", error);
     throw new Error(`Failed to upload video: ${error.message}`);
   }
 };

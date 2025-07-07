@@ -6,18 +6,18 @@
 //     const [name, setName] = useState('');
 //     const [email, setEmail] = useState('');
 //     const [password, setPassword] = useState('');
-  
+
 //     const handleSubmit = async (e) => {
 //       e.preventDefault();
 //       try {
-//         const res = await axios.post('http://localhost:8000/api/auth/signup', { name, email, password });
+//         const res = await axios.post('http://localhost:10000/api/auth/signup', { name, email, password });
 //         localStorage.setItem('token', res.data.token);
 //         onSignup(res.data.user);
 //       } catch (err) {
 //         alert('Signup failed');
 //       }
 //     };
-  
+
 //     return (
 //       <div className="form-container">
 //         <h2 className="form-title">Sign Up</h2>

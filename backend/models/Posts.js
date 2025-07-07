@@ -1,4 +1,4 @@
-import mongoose from 'mongoose';
+import mongoose from "mongoose";
 
 // Define the Post schema
 const postSchema = new mongoose.Schema(
@@ -9,7 +9,7 @@ const postSchema = new mongoose.Schema(
     },
     user: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: 'User', // Associate post with a user
+      ref: "User", // Associate post with a user
       required: true,
     },
     // Add any other properties related to a post here
@@ -18,6 +18,6 @@ const postSchema = new mongoose.Schema(
 );
 
 // Create the Post model
-const Post = mongoose.model('Post', postSchema);
+const Post = mongoose.model("Post", postSchema);
 
 export default Post;

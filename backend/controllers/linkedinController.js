@@ -1,3 +1,5 @@
+import axios from "axios";
+import fs from "fs";
 import {
   getLinkedInAuthUrl,
   getAccessToken,
@@ -45,5 +47,90 @@ export const handleCodeExchange = async (req, res) => {
   } catch (err) {
     console.error("Token exchange failed:", err.response?.data || err.message);
     res.status(500).json({ error: "Token exchange failed." });
+  }
+};
+
+export const getLinkedInUserInfo = async (req, res) => {
+  const { accessToken } = req.body;
+
+  try {
+    const response = await axios.get("https://api.linkedin.com/v2/userinfo", {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    });
+
+    const { sub } = response.data;
+    res.json({ sub });
+  } catch (err) {
+    console.error(
+      "Failed to fetch userinfo:",
+      err.response?.data || err.message
+    );
+    res.status(500).json({ 
+      error: "Failed to get user info",
+      details: err.response?.data || err.message 
+    });
+  }
+};
+
+export const createLinkedInPost = async (req, res) => {
+  try {
+    const { accessToken, text, userUrn, imageUrl } = req.body;
+
+    if (!accessToken || !userUrn) {
+      return res.status(400).json({ 
+        error: "Missing required parameters",
+        code: "MISSING_REQUIRED_FIELDS" 
+      });
+    }
+
+    let imagePath = null;
+    if (imageUrl) {
+      try {
+        const imageResponse = await axios.get(imageUrl, {
+          responseType: "stream",
+        });
+
+        const tempPath = `uploads/temp-${Date.now()}.jpg`;
+        const writer = fs.createWriteStream(tempPath);
+        imageResponse.data.pipe(writer);
+
+        await new Promise((resolve, reject) => {
+          writer.on("finish", resolve);
+          writer.on("error", reject);
+        });
+
+        imagePath = tempPath;
+      } catch (downloadError) {
+        console.error("Failed to download image:", downloadError);
+      }
+    }
+
+    const linkedinResponse = await axios.post(
+      "http://localhost:10000/api/linkedin/post",
+      {
+        accessToken,
+        text,
+        userUrn,
+        imagePath,
+      }
+    );
+
+    if (imagePath && fs.existsSync(imagePath)) {
+      fs.unlinkSync(imagePath);
+    }
+
+    res.json(linkedinResponse.data);
+  } catch (error) {
+    console.error(
+      "Error posting to LinkedIn:",
+      error.response?.data || error.message
+    );
+    res.status(500).json({
+      error: "Failed to post to LinkedIn",
+      details: error.response?.data || error.message,
+      code: error.response?.data?.code || "SERVER_ERROR",
+    });
   }
 };

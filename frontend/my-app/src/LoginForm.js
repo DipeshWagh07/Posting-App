@@ -5,11 +5,11 @@
 // function LoginForm({ onLogin }) {
 //     const [email, setEmail] = useState('');
 //     const [password, setPassword] = useState('');
-  
+
 //     const handleSubmit = async (e) => {
 //       e.preventDefault();
 //       try {
-//         const res = await axios.post('http://localhost:8000/api/auth/login', { email, password });
+//         const res = await axios.post('http://localhost:10000/api/auth/login', { email, password });
 //         localStorage.setItem('token', res.data.token);
 //         onLogin(res.data.user);
 //       } catch (err) {
@@ -17,7 +17,7 @@
 //         alert(errorMessage);
 //       }
 //     };
-  
+
 //     return (
 //       <div className="form-container">
 //         <h2 className="form-title">Login</h2>

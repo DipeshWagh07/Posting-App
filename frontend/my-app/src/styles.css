@@ -62,6 +62,7 @@
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
   gap: 1rem;
+  width: 100%;
 }
 
 .platform-item {
@@ -72,6 +73,7 @@
   background-color: #f9f9f9;
   border-radius: 6px;
   border: 1px solid #eaeaea;
+ margin-bottom: 10px;
 }
 
 .platform-status {
@@ -277,6 +279,23 @@
   box-shadow: 0 4px 8px rgba(240, 148, 51, 0.3);
 }
 
+.whatsapp-button {
+  background-color: #25d366;
+  color: white;
+}
+
+.whatsapp-button:hover {
+  background-color: #128c7e;
+}
+
+.whatsapp-button.connected {
+  background-color: #dc3545;
+}
+
+.whatsapp-button.connected:hover {
+  background-color: #c82333;
+}
+
 .facebook-page-selection {
   margin-top: 15px;
   padding: 15px;
@@ -307,30 +326,11 @@
   box-shadow: 0 0 0 2px rgba(24, 119, 242, 0.2);
 }
 
-.platform-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 12px;
-  border: 1px solid #e1e5e9;
-  border-radius: 8px;
-  margin-bottom: 10px;
-}
-
 .platform-status label {
   display: flex;
   align-items: center;
   gap: 8px;
   font-weight: 500;
-}
-
-.connect-button {
-  padding: 8px 16px;
-  border: none;
-  border-radius: 6px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.3s ease;
 }
 
 .uploader-container {
@@ -428,4 +428,24 @@
   border: 1px solid #b5e4c6;
   border-radius: 6px;
   color: #267a3d;
+}
+
+.tiktok-button {
+  background-color: #000000;
+  color: white;
+  font-weight: bold;
+  padding: 12px 24px;
+  border: 1px solid #FE2C55;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.tiktok-button:hover {
+  background-color: #FE2C55;
+}
+
+.tiktok-button.connected {
+  background-color: #25F4EE;
+  color: black;
+  border: 1px solid #000000;
 }

@@ -8,7 +8,7 @@ export const getFacebookPages = async (accessToken) => {
     }
 
     const response = await axios.get(
-      "http://localhost:8000/api/facebook/pages",
+      "http://localhost:10000/api/facebook/pages",
       {
         headers: {
           Authorization: `Bearer ${accessToken}`,
@@ -40,7 +40,7 @@ export const postToFacebookPage = async (
     }
 
     const response = await axios.post(
-      "http://localhost:8000/api/facebook/post",
+      "http://localhost:10000/api/facebook/post",
       {
         userAccessToken: accessToken,
         pageId,
@@ -66,7 +66,7 @@ export const checkFacebookAuthStatus = async (accessToken) => {
     if (!accessToken) return false;
 
     const response = await axios.get(
-      "http://localhost:8000/api/facebook/status",
+      "http://localhost:10000/api/facebook/status",
       {
         headers: {
           Authorization: `Bearer ${accessToken}`,
