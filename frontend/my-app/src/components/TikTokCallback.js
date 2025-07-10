@@ -6,62 +6,43 @@ function TikTokCallback() {
 
   useEffect(() => {
     const handleCallback = async () => {
-      console.log('Handling TikTok callback...'); // Debug log
-      
-      try {
-        const params = new URLSearchParams(window.location.search);
-        const hashParams = new URLSearchParams(window.location.hash.substring(1));
+      const params = new URLSearchParams(window.location.search);
+      const hashParams = new URLSearchParams(window.location.hash.substring(1));
 
-        console.log('URL params:', { 
-          search: params.toString(),
-          hash: hashParams.toString() 
-        }); // Debug log
-
-        if (params.has('access_token')) {
-          // Success case
-          const accessToken = params.get('access_token');
-          const openId = params.get('open_id');
-          
-          console.log('Received TikTok tokens:', { accessToken, openId }); // Debug log
-          
-          localStorage.setItem('tiktok_access_token', accessToken);
-          localStorage.setItem('tiktok_open_id', openId);
-          
-          navigate('/dashboard', { 
-            replace: true,
-            state: { 
-              message: 'TikTok connected successfully!' 
-            } 
-          });
-        } 
-        else if (hashParams.has('error')) {
-          // Error case
-          const error = decodeURIComponent(hashParams.get('error'));
-          console.error('TikTok auth error:', error);
-          
-          navigate('/dashboard', { 
-            replace: true,
-            state: { 
-              error: `TikTok connection failed: ${error}` 
-            } 
-          });
-        }
-        else {
-          // No token or error - unexpected state
-          console.error('Unexpected callback state');
-          navigate('/dashboard', { 
-            replace: true,
-            state: { 
-              error: 'TikTok connection failed: Unknown error' 
-            } 
-          });
-        }
-      } catch (err) {
-        console.error('Error handling TikTok callback:', err);
+      if (params.has('access_token')) {
+        // Success case
+        const accessToken = params.get('access_token');
+        const openId = params.get('open_id');
+        
+        localStorage.setItem('tiktok_access_token', accessToken);
+        localStorage.setItem('tiktok_open_id', openId);
+        
         navigate('/dashboard', { 
           replace: true,
           state: { 
-            error: 'Failed to process TikTok connection' 
+            message: 'TikTok connected successfully!' 
+          } 
+        });
+      } 
+      else if (hashParams.has('error')) {
+        // Error case
+        const error = decodeURIComponent(hashParams.get('error'));
+        console.error('TikTok auth error:', error);
+        
+        navigate('/dashboard', { 
+          replace: true,
+          state: { 
+            error: `TikTok connection failed: ${error}` 
+          } 
+        });
+      }
+      else {
+        // No token or error - unexpected state
+        console.error('Unexpected callback state');
+        navigate('/dashboard', { 
+          replace: true,
+          state: { 
+            error: 'TikTok connection failed: Unknown error' 
           } 
         });
       }
