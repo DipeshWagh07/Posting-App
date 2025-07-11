@@ -8,7 +8,7 @@ dotenv.config();
 const clientId =
   "988078798138-0m6pg1eo48c5r247mvg040pa3qo04mvs.apps.googleusercontent.com";
 const clientSecret = "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";
-const redirectUri = "http://localhost:10000/auth/youtube/callback";
+const redirectUri = "http://localhost:8000/auth/youtube/callback";
 
 const oauth2Client = new google.auth.OAuth2(
   clientId,

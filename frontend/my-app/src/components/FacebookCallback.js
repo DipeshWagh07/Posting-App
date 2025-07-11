@@ -25,7 +25,7 @@ const FacebookCallback = () => {
 
       try {
         const response = await axios.post(
-          "http://localhost:10000/auth/facebook/exchange",
+          "http://localhost:8000/auth/facebook/exchange",
           {
             code,
             redirectUri: "http://localhost:3000/auth/facebook/callback",

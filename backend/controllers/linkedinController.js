@@ -108,7 +108,7 @@ export const createLinkedInPost = async (req, res) => {
     }
 
     const linkedinResponse = await axios.post(
-      "http://localhost:10000/api/linkedin/post",
+      "http://localhost:8000/api/linkedin/post",
       {
         accessToken,
         text,

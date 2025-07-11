@@ -33,7 +33,7 @@ const InstagramCallback = () => {
         setStatus("Exchanging authorization code for access token...");
 
         const response = await axios.post(
-          "http://localhost:10000/auth/instagram/token",
+          "http://localhost:8000/auth/instagram/token",
           {
             code,
             redirectUri: "http://localhost:3000/auth/instagram/callback",

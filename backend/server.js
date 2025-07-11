@@ -108,7 +108,7 @@ app.use(cors({
   allowedHeaders: ["Content-Type", "Authorization", "x-open-id"]
 }));
 
-const port = process.env.PORT || 10000;
+const port = process.env.PORT || 8000;
 
 // Fix for __dirname in ES modules
 const __filename = fileURLToPath(import.meta.url);

@@ -57,7 +57,7 @@ export const getInstagramAccessToken = async (code) => {
       params,
       {
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        timeout: 10000,
+        timeout: 8000,
       }
     );
 
@@ -96,7 +96,7 @@ const exchangeForLongLivedToken = async (shortLivedToken) => {
           client_secret: INSTAGRAM_APP_SECRET,
           access_token: shortLivedToken,
         },
-        timeout: 10000,
+        timeout: 8000,
       }
     );
 
@@ -146,7 +146,7 @@ export const postToInstagram = async (accessToken, imageUrl, caption = "") => {
       `https://graph.facebook.com/v17.0/me/accounts`,
       {
         params: { access_token: accessToken },
-        timeout: 10000,
+        timeout: 8000,
       }
     );
 
@@ -165,7 +165,7 @@ export const postToInstagram = async (accessToken, imageUrl, caption = "") => {
           fields: "instagram_business_account",
           access_token: pageAccessToken,
         },
-        timeout: 10000,
+        timeout: 8000,
       }
     );
 
@@ -219,7 +219,7 @@ export const postToInstagram = async (accessToken, imageUrl, caption = "") => {
     if (errorCode === 10)
       throw new Error("Permission denied - check account permissions");
     if (errorCode === 200) throw new Error("Invalid image URL or content");
-    if (errorCode === 100007)
+    if (errorCode === 80007)
       throw new Error("Caption exceeds maximum length (2200 characters)");
 
     throw new Error(
@@ -237,7 +237,7 @@ export const refreshInstagramToken = async (accessToken) => {
           grant_type: "ig_refresh_token",
           access_token: accessToken,
         },
-        timeout: 10000,
+        timeout: 8000,
       }
     );
 

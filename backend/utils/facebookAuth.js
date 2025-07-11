@@ -103,7 +103,7 @@ export const getFacebookAccessToken = async (code) => {
           redirect_uri: redirectUri,
           code: code,
         },
-        timeout: 10000,
+        timeout: 8000,
       }
     );
 
@@ -149,7 +149,7 @@ export const getFacebookUserInfo = async (accessToken) => {
             "id,name,first_name,last_name,email,picture.width(200).height(200),accounts",
           access_token: accessToken,
         },
-        timeout: 10000,
+        timeout: 8000,
       }
     );
 
@@ -285,7 +285,7 @@ export const getInstagramAccountInfo = async (
           fields:
             "id,username,followers_count,media_count,profile_picture_url,biography,website",
         },
-        timeout: 10000,
+        timeout: 8000,
       }
     );
 
@@ -427,7 +427,7 @@ export const refreshFacebookToken = async (accessToken) => {
           client_secret: "d84933382c363ca71fcb146268ff0cdc",
           fb_exchange_token: accessToken,
         },
-        timeout: 10000,
+        timeout: 8000,
       }
     );
 

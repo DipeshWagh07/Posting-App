@@ -501,7 +501,7 @@ const [tiktokOpenId, setTiktokOpenId] = useState(
       setPostStatus(error.message || "Failed to connect to Instagram");
     } finally {
       setIsPosting(false);
-      setTimeout(() => setPostStatus(""), 10000);
+      setTimeout(() => setPostStatus(""), 8000);
     }
   };
   const connectFacebook = () => {
@@ -518,7 +518,7 @@ const [tiktokOpenId, setTiktokOpenId] = useState(
   };
 
   const connectYouTube = () => {
-    window.location.href = "http://localhost:10000/auth/youtube";
+    window.location.href = "http://localhost:8000/auth/youtube";
   };
 
   const connectTwitterX = async () => {
@@ -526,7 +526,7 @@ const [tiktokOpenId, setTiktokOpenId] = useState(
       localStorage.removeItem("twitterX_access_token");
       localStorage.removeItem("twitterX_access_secret");
 
-      const response = await axios.get("http://localhost:10000/auth/twitter");
+      const response = await axios.get("http://localhost:8000/auth/twitter");
       if (response.data?.authUrl) {
         window.location.href = response.data.authUrl;
       } else {
@@ -806,7 +806,7 @@ const postToTikTok = async (caption, file) => {
         const userUrn = await getUserURN(linkedinAccessToken);
         if (!userUrn) throw new Error("Failed to get LinkedIn user info");
 
-        await axios.post("http://localhost:10000/api/post-to-linkedin", {
+        await axios.post("http://localhost:8000/api/post-to-linkedin", {
           accessToken: linkedinAccessToken,
           text: postText,
           userUrn,
@@ -825,7 +825,7 @@ const postToTikTok = async (caption, file) => {
         youtubeFormData.append("title", postText);
 
         await axios.post(
-          "http://localhost:10000/api/upload-youtube-video",
+          "http://localhost:8000/api/upload-youtube-video",
           youtubeFormData,
           { headers: { "Content-Type": "multipart/form-data" } }
         );
@@ -844,7 +844,7 @@ if (selectedPlatforms.tiktok && tiktokAccessToken) {
       // Post to Twitter
       if (selectedPlatforms.twitterX && twitterXAccessToken) {
         await axios.post(
-          "http://localhost:10000/api/twitter/post",
+          "http://localhost:8000/api/twitter/post",
           {
             content: postText,
             mediaUrls: imageUrl ? [imageUrl] : [],
@@ -855,7 +855,7 @@ if (selectedPlatforms.tiktok && tiktokAccessToken) {
       // Post to WhatsApp
       if (selectedPlatforms.whatsapp && whatsappAccessToken) {
         await axios.post(
-          "http://localhost:10000/api/whatsapp/post",
+          "http://localhost:8000/api/whatsapp/post",
           {
             message: postText,
             mediaUrl: imageUrl,
@@ -902,7 +902,7 @@ if (selectedPlatforms.tiktok && tiktokAccessToken) {
       uploadForm.append("file", file);
 
       const uploadResponse = await axios.post(
-        "http://localhost:10000/api/instagram/upload",
+        "http://localhost:8000/api/instagram/upload",
         uploadForm,
         {
           headers: {
@@ -917,7 +917,7 @@ if (selectedPlatforms.tiktok && tiktokAccessToken) {
 
       // Create Instagram post with the Cloudinary URL
       const postResponse = await axios.post(
-        "http://localhost:10000/api/instagram/post",
+        "http://localhost:8000/api/instagram/post",
         {
           pageAccessToken,
           instagramUserId,
@@ -995,7 +995,7 @@ if (selectedPlatforms.tiktok && tiktokAccessToken) {
             fields: "access_token",
             access_token: userAccessToken,
           },
-          timeout: 10000, // 10 second timeout
+          timeout: 8000, // 10 second timeout
         }
       );
 

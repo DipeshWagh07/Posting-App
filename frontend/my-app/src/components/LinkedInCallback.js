@@ -25,7 +25,7 @@ const LinkedInCallback = () => {
 
       try {
         const response = await axios.post(
-          "http://localhost:10000/auth/linkedin/exchange",
+          "http://localhost:8000/auth/linkedin/exchange",
           {
             code,
             redirectUri: "http://localhost:3000/auth/linkedin/callback",
