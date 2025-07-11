@@ -148,6 +148,7 @@ const [tiktokOpenId, setTiktokOpenId] = useState(
       const hashParams = new URLSearchParams(window.location.hash.substring(1));
     
        if (params.has('access_token')) {
+        
       const accessToken = params.get('access_token');
       const openId = params.get('open_id');
       
@@ -687,7 +688,7 @@ const postToTikTok = async (caption, file) => {
      localStorage.removeItem("tiktok_access_token");
   localStorage.removeItem("tiktok_open_id");
   setTiktokAccessToken("");
-  setTikTokOpenId("");
+  // setTikTokOpenId("");
       break;
 
 
