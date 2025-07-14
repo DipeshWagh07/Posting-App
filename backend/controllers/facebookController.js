@@ -1,11 +1,11 @@
-import axios from "axios";
+import axios from 'axios';
 import {
   getFacebookAuthUrl,
   getFacebookAccessToken,
   getFacebookPages,
   getFacebookUserInfo,
   postToFacebookPage,
-  verifyFacebookToken,
+  verifyFacebookToken
 } from "../utils/facebookAuth.js";
 
 // Environment variables
@@ -23,7 +23,7 @@ const createErrorResponse = (error, defaultMessage = "An error occurred") => {
     code: fbError.code || "UNKNOWN_ERROR",
     fbtrace_id: fbError.fbtrace_id,
     details: error.details,
-    stack: process.env.NODE_ENV === "development" ? error.stack : undefined,
+    stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
   };
 };
 
@@ -31,15 +31,13 @@ export const startFacebookAuth = (req, res) => {
   try {
     const { state } = req.query;
     const authUrl = getFacebookAuthUrl(state);
-    res.json({
+    res.json({ 
       authUrl,
-      expiresIn: 3600, // 1 hour validity
+      expiresIn: 3600 // 1 hour validity
     });
   } catch (error) {
     console.error("Auth URL generation error:", error);
-    res
-      .status(500)
-      .json(createErrorResponse(error, "Failed to generate auth URL"));
+    res.status(500).json(createErrorResponse(error, "Failed to generate auth URL"));
   }
 };
 
@@ -47,34 +45,37 @@ export const facebookCallback = async (req, res) => {
   const { code, error: fbError, error_reason: errorReason, state } = req.query;
 
   if (fbError) {
-    console.error("Facebook OAuth error:", { fbError, errorReason, state });
+    console.error('Facebook OAuth error:', { fbError, errorReason, state });
     return res.redirect(
-      `${FRONTEND_REDIRECT}/auth-error?provider=facebook&error=${encodeURIComponent(
-        errorReason || "unknown"
-      )}&state=${state || ""}`
+      `${FRONTEND_REDIRECT}/auth-error?provider=facebook&error=${encodeURIComponent(errorReason || 'unknown')}&state=${state || ''}`
     );
   }
 
   if (!code) {
-    return res.status(400).json({ error: "Authorization code not provided" });
+    return res.status(400).json(createErrorResponse(new Error("Authorization code not provided")));
   }
 
   try {
+    // 1. First get the access token
     const userAccessToken = await getFacebookAccessToken(code);
+
+    // 2. Then get user info and pages in parallel
     const [userInfo, pages] = await Promise.all([
       getFacebookUserInfo(userAccessToken),
-      getFacebookPages(userAccessToken),
+      getFacebookPages(userAccessToken)
     ]);
 
-    // Find first page with Instagram connection
-    const instagramConnectedPage = pages.find(
-      (page) => page.instagram_business_account?.connected
-    );
+    // Verify token is valid before proceeding
+    const tokenInfo = await verifyFacebookToken(userAccessToken);
+    if (!tokenInfo.is_valid) {
+      throw new Error("Invalid access token received from Facebook");
+    }
 
     const redirectUrl = new URL(`${FRONTEND_REDIRECT}/dashboard`);
-    redirectUrl.searchParams.set("platform", "facebook");
-    redirectUrl.searchParams.set("accessToken", userAccessToken);
-    redirectUrl.searchParams.set("userId", userInfo.id);
+    redirectUrl.searchParams.set('platform', 'facebook');
+    redirectUrl.searchParams.set('accessToken', userAccessToken);
+    redirectUrl.searchParams.set('userId', userInfo.id);
+    redirectUrl.searchParams.set('userName', encodeURIComponent(userInfo.name));
     redirectUrl.searchParams.set("userName", encodeURIComponent(userInfo.name));
 
     if (instagramConnectedPage) {
@@ -294,90 +295,7 @@ export const debugFacebookPageAccess = async (req, res) => {
   }
 };
 
-export const getInstagramAccountInfo = async (req, res) => {
-  try {
-    const { pageAccessToken, pageId } = req.body;
 
-    if (!pageAccessToken || !pageId) {
-      return res.status(400).json({
-        error: "pageAccessToken and pageId are required",
-        code: "MISSING_REQUIRED_FIELDS",
-      });
-    }
-
-    const response = await axios.get(
-      `https://graph.facebook.com/v18.0/${pageId}`,
-      {
-        params: {
-          fields: "instagram_business_account{id,username}",
-          access_token: pageAccessToken,
-        },
-      }
-    );
-
-    if (!response.data.instagram_business_account) {
-      return res.status(404).json({
-        error: "No Instagram account connected to this page",
-        code: "INSTAGRAM_NOT_CONNECTED",
-      });
-    }
-
-    res.json({
-      instagramAccount: response.data.instagram_business_account,
-    });
-  } catch (error) {
-    console.error("Error getting Instagram account info:", error);
-    res.status(500).json({
-      error: "Failed to get Instagram account info",
-      details: error.response?.data || error.message,
-    });
-  }
-};
-
-export const postToInstagram = async (req, res) => {
-  try {
-    const { pageAccessToken, instagramUserId, caption, imageUrl } = req.body;
-
-    if (!pageAccessToken || !instagramUserId || !imageUrl) {
-      return res.status(400).json({
-        error: "Missing required parameters",
-        code: "MISSING_REQUIRED_FIELDS",
-      });
-    }
-
-    // Create media container
-    const containerResponse = await axios.post(
-      `https://graph.facebook.com/v18.0/${instagramUserId}/media`,
-      {
-        image_url: imageUrl,
-        caption: caption?.substring(0, 2200) || "",
-      },
-      { params: { access_token: pageAccessToken } }
-    );
-
-    if (!containerResponse.data.id) {
-      throw new Error("Failed to create media container");
-    }
-
-    // Publish the container
-    const publishResponse = await axios.post(
-      `https://graph.facebook.com/v18.0/${instagramUserId}/media_publish`,
-      { creation_id: containerResponse.data.id },
-      { params: { access_token: pageAccessToken } }
-    );
-
-    res.json({
-      success: true,
-      postId: publishResponse.data.id,
-    });
-  } catch (error) {
-    console.error("Error posting to Instagram:", error);
-    res.status(500).json({
-      error: "Failed to post to Instagram",
-      details: error.response?.data || error.message,
-    });
-  }
-};
 export const createFacebookPostWithFile = async (req, res) => {
   try {
     const { message, pageId, accessToken } = req.body;

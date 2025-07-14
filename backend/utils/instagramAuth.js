@@ -86,7 +86,7 @@ export const getInstagramAccessToken = async (code) => {
   }
 };
 
-const exchangeForLongLivedToken = async (shortLivedToken) => {
+export const exchangeForLongLivedToken = async (shortLivedToken) => {
   try {
     const response = await axios.get(
       `https://graph.instagram.com/access_token`,

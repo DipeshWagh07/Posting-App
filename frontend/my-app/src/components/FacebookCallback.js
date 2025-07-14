@@ -1,22 +1,22 @@
-import React, { useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import axios from "axios";
+import React, { useEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import axios from 'axios';
 import "../styles.css";
 
 const FacebookCallback = () => {
   const navigate = useNavigate();
-  const [status, setStatus] = useState("Authenticating with Facebook...");
-  const [error, setError] = useState("");
+  const [status, setStatus] = useState('Authenticating with Facebook...');
+  const [error, setError] = useState('');
   const hasExchangedCode = useRef(false);
 
   useEffect(() => {
     const fetchAccessToken = async () => {
       const urlParams = new URLSearchParams(window.location.search);
-      const code = urlParams.get("code");
-      const state = urlParams.get("state");
+      const code = urlParams.get('code');
+      const state = urlParams.get('state');
 
       if (!code || !state) {
-        setError("Missing code or state in callback URL.");
+        setError('Missing code or state in callback URL.');
         return;
       }
 
@@ -24,61 +24,41 @@ const FacebookCallback = () => {
       hasExchangedCode.current = true;
 
       try {
-        const response = await axios.post(
-          "http://localhost:8000/auth/facebook/exchange",
-          {
+        const response = await axios.post('http://localhost:8000/auth/facebook/exchange', { 
             code,
-            redirectUri: "http://localhost:3000/auth/facebook/callback",
-          }
-        );
+          redirectUri: 'http://localhost:3000/auth/facebook/callback',
+        });
 
-        const { accessToken, pages, instagramAccounts } = response.data;
+        const { accessToken, pages } = response.data;
 
         if (accessToken) {
-          localStorage.setItem("facebook_access_token", accessToken);
+          localStorage.setItem('facebook_access_token', accessToken);
           if (pages) {
-            localStorage.setItem("facebook_pages", JSON.stringify(pages));
+            localStorage.setItem('facebook_pages', JSON.stringify(pages));
           }
-          // Store Instagram account if available
-          if (instagramAccounts && instagramAccounts.length > 0) {
-            localStorage.setItem(
-              "instagram_account",
-              JSON.stringify(instagramAccounts[0])
-            );
-            localStorage.setItem("instagram_access_token", accessToken); // Using same token
-          }
-          setStatus("Authentication successful! Redirecting...");
-          setTimeout(() => navigate("/dashboard"), 1000);
+          setStatus('Facebook authentication successful! Redirecting...');
+          setTimeout(() => navigate('/dashboard'), 1000);
         } else {
-          setError("No access token received.");
+          setError('No access token received.');
         }
       } catch (err) {
         console.error(err);
-        setError(
-          `Error fetching access token: ${
-            err.response?.data?.error || err.message
-          }`
-        );
+        setError(`Error fetching access token: ${err.response?.data?.error || err.message}`);
       }
     };
 
     fetchAccessToken();
   }, [navigate]);
-
   return (
     <div className="callback-container">
       {error ? (
         <div className="error-message">
           <h2>Facebook Authentication Error</h2>
           <p>{error}</p>
-          <button
-            onClick={() => navigate("/dashboard")}
-            className="return-button"
-          >
+          <button onClick={() => navigate('/dashboard')} className="return-button">
             Return to Dashboard
           </button>
-        </div>
-      ) : (
+        </div> ) : (
         <div className="status-message">
           <div className="loader"></div>
           <p>{status}</p>
@@ -87,5 +67,4 @@ const FacebookCallback = () => {
     </div>
   );
 };
-
 export default FacebookCallback;

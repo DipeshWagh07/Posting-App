@@ -1,5 +1,5 @@
-import axios from "axios";
-import dotenv from "dotenv";
+import axios from 'axios';
+import dotenv from 'dotenv';
 
 dotenv.config();
 
@@ -7,61 +7,60 @@ const clientId = "1057966605784043";
 const clientSecret = "d84933382c363ca71fcb146268ff0cdc";
 const redirectUri = "http://localhost:3000/auth/facebook/callback";
 const apiVersion = "v18.0";
-
 // Enhanced error handler with more specific error codes
 const handleFacebookError = (error, action) => {
   const fbError = error.response?.data?.error || {};
-
+  
   const errorMap = {
-    368: {
+    368: { 
       message: "Temporary block due to policy violations",
       solution: "Wait 1-24 hours and review Facebook policies",
-      type: "TEMPORARY_BLOCK",
+      type: "TEMPORARY_BLOCK"
     },
-    190: {
-      message: "Expired token",
+    190: { 
+      message: "Expired token", 
       solution: "Re-authenticate user",
-      type: "TOKEN_EXPIRED",
+      type: "TOKEN_EXPIRED"
     },
-    10: {
-      message: "Permission denied",
+    10: { 
+      message: "Permission denied", 
       solution: "Check app permissions in Facebook Developer Portal",
-      type: "PERMISSION_DENIED",
+      type: "PERMISSION_DENIED"
     },
     200: {
       message: "Permissions error",
       solution: "Ensure you have all required permissions approved",
-      type: "MISSING_PERMISSIONS",
+      type: "MISSING_PERMISSIONS"
     },
     4: {
       message: "Application request limit reached",
       solution: "Wait or increase your app limits",
-      type: "RATE_LIMIT",
-    },
+      type: "RATE_LIMIT"
+    }
   };
 
   const knownError = errorMap[fbError.code] || {
     message: fbError.message || error.message,
     solution: "Check Facebook API documentation",
-    type: "UNKNOWN_ERROR",
+    type: "UNKNOWN_ERROR"
   };
 
-  console.error(`Facebook ${action} error:`, {
+  console.error(`Facebook ${action} error:`, { 
     ...knownError,
     code: fbError.code,
     fbtrace_id: fbError.fbtrace_id,
     status: error.response?.status,
-    config: error.config,
+    config: error.config
   });
-
+  
   const errorToThrow = new Error(knownError.message);
   errorToThrow.details = {
-    type: "FACEBOOK_API_ERROR",
+    type: 'FACEBOOK_API_ERROR',
     ...knownError,
     originalError: fbError,
-    action,
+    action
   };
-
+  
   throw errorToThrow;
 };
 
@@ -71,13 +70,12 @@ export const getFacebookAuthUrl = (state = null) => {
     "pages_manage_posts",
     "pages_read_engagement",
     "pages_show_list",
-    "instagram_basic",
-    "instagram_content_publish",
-    "business_management",
+    "public_profile",
+    "email"
   ].join(",");
-
+  
   const authState = state || Math.random().toString(36).substring(2, 15);
-
+  
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
@@ -85,12 +83,11 @@ export const getFacebookAuthUrl = (state = null) => {
     response_type: "code",
     state: authState,
     auth_type: "rerequest",
-    display: "popup",
+    display: "popup"
   });
 
   return `https://www.facebook.com/${apiVersion}/dialog/oauth?${params.toString()}`;
 };
-
 // Enhanced token exchange with better validation
 export const getFacebookAccessToken = async (code) => {
   try {
@@ -103,19 +100,17 @@ export const getFacebookAccessToken = async (code) => {
           redirect_uri: redirectUri,
           code: code,
         },
-        timeout: 8000,
+        timeout: 10000
       }
     );
-
+    
     if (!response.data.access_token) {
       throw new Error("No access token in response");
     }
-
+    
     // Validate token structure
-    if (
-      typeof response.data.access_token !== "string" ||
-      response.data.access_token.length < 50
-    ) {
+    if (typeof response.data.access_token !== 'string' || 
+        response.data.access_token.length < 50) {
       throw new Error("Invalid access token format");
     }
 
@@ -265,63 +260,107 @@ export const getInstagramAccountInfo = async (
   pageAccessToken,
   instagramBusinessId
 ) => {
-  try {
-    // First validate the inputs
-    if (!instagramBusinessId || instagramBusinessId === "undefined") {
-      throw {
-        message: "No Instagram Business Account connected to this page",
-        code: "NO_INSTAGRAM_ACCOUNT",
-        solution:
-          "Connect an Instagram Business account to this Facebook page in Meta Business Suite",
-        type: "INSTAGRAM_NOT_CONNECTED",
-      };
-    }
+  // Validate inputs at the start
+  if (!pageAccessToken) {
+    throw {
+      message: "Page access token is required",
+      code: "MISSING_PAGE_ACCESS_TOKEN",
+      type: "VALIDATION_ERROR",
+    };
+  }
 
+  if (!instagramBusinessId || instagramBusinessId === "undefined") {
+    throw {
+      message: "No Instagram Business Account connected to this page",
+      code: "NO_INSTAGRAM_ACCOUNT",
+      solution: "Connect an Instagram Business account to this Facebook page in Meta Business Suite",
+      type: "INSTAGRAM_NOT_CONNECTED",
+    };
+  }
+
+  try {
     const response = await axios.get(
       `https://graph.facebook.com/${apiVersion}/${instagramBusinessId}`,
       {
         params: {
           access_token: pageAccessToken,
-          fields:
-            "id,username,followers_count,media_count,profile_picture_url,biography,website",
+          fields: "id,username,followers_count,media_count,profile_picture_url,biography,website",
         },
-        timeout: 8000,
+        timeout: 10000, // Increased timeout for better reliability
       }
     );
 
-    if (!response.data.id) {
+    // Validate response data structure
+    if (!response.data?.id) {
       throw {
-        message: "Invalid Instagram account data",
+        message: "Invalid Instagram account data received",
         code: "INVALID_INSTAGRAM_DATA",
+        details: response.data,
+        type: "API_RESPONSE_ERROR",
       };
     }
 
-    return response.data;
+    // Return formatted data
+    return {
+      id: response.data.id,
+      username: response.data.username,
+      followersCount: response.data.followers_count,
+      mediaCount: response.data.media_count,
+      profilePicture: response.data.profile_picture_url,
+      bio: response.data.biography,
+      website: response.data.website,
+    };
   } catch (error) {
-    // Handle specific Instagram API errors
-    if (error.response?.data?.error?.code === 100) {
+    // Handle API errors
+    if (error.response?.data?.error) {
+      const apiError = error.response.data.error;
+
+      if (apiError.code === 100) {
+        throw {
+          message: "Instagram account not found or permissions missing",
+          details: apiError,
+          code: "INSTAGRAM_ACCOUNT_ERROR",
+          solution: [
+            "Ensure the Instagram account is a Business/Creator account",
+            "Verify the account is properly connected to the Facebook page",
+            "Check you have instagram_basic and instagram_content_publish permissions",
+          ].join("\n"),
+          type: "INSTAGRAM_API_ERROR",
+        };
+      }
+
+      if (apiError.code === 190) {
+        throw {
+          message: "Invalid access token",
+          details: apiError,
+          code: "INVALID_ACCESS_TOKEN",
+          solution: "Refresh or obtain a new page access token",
+          type: "AUTHENTICATION_ERROR",
+        };
+      }
+    }
+
+    // Handle timeout errors
+    if (error.code === 'ECONNABORTED') {
       throw {
-        message: "Instagram account not found or permissions missing",
-        details: error.response.data.error,
-        code: "INSTAGRAM_ACCOUNT_ERROR",
-        solution: [
-          "Ensure the Instagram account is a Business/Creator account",
-          "Verify the account is properly connected to the Facebook page",
-          "Check you have instagram_basic and instagram_content_publish permissions",
-        ].join("\n"),
-        type: "INSTAGRAM_API_ERROR",
+        message: "Request timed out while fetching Instagram account info",
+        code: "REQUEST_TIMEOUT",
+        solution: "Try again later or increase the timeout duration",
+        type: "NETWORK_ERROR",
       };
     }
 
     // Re-throw custom errors
-    if (
-      error.code === "NO_INSTAGRAM_ACCOUNT" ||
-      error.code === "INVALID_INSTAGRAM_DATA"
-    ) {
+    if (error.code && [
+      "MISSING_PAGE_ACCESS_TOKEN",
+      "NO_INSTAGRAM_ACCOUNT",
+      "INVALID_INSTAGRAM_DATA"
+    ].includes(error.code)) {
       throw error;
     }
 
-    handleFacebookError(error, "fetch Instagram info");
+    // Handle other errors
+    handleFacebookError(error, "fetch Instagram account info");
   }
 };
 
@@ -354,28 +393,37 @@ export const getFacebookPages = async (accessToken) => {
   }
 };
 
-// Update postToInstagram function with proper implementation
-export const postToInstagram = async (
+export const postToInstagramWithUserId = async (
   pageAccessToken,
   instagramUserId,
   postData
 ) => {
-  try {
-    // Validate required fields
-    if (!postData.caption || !postData.imageUrl) {
-      throw {
-        message: "Caption and imageUrl are required for Instagram posts",
-        code: "MISSING_REQUIRED_FIELDS",
-      };
-    }
+  // Validate inputs
+  if (!pageAccessToken || !instagramUserId) {
+    throw {
+      message: "Page access token and Instagram user ID are required",
+      code: "MISSING_REQUIRED_FIELDS",
+    };
+  }
 
-    // First create the media container
+  if (!postData?.caption || !postData?.imageUrl) {
+    throw {
+      message: "Caption and imageUrl are required for Instagram posts",
+      code: "MISSING_REQUIRED_FIELDS",
+    };
+  }
+
+  try {
+    // Create the media container
     const mediaResponse = await axios.post(
       `https://graph.facebook.com/${apiVersion}/${instagramUserId}/media`,
       {
         image_url: postData.imageUrl,
-        caption: postData.caption,
+        caption: postData.caption.substring(0, 2200), // Ensure caption length limit
         access_token: pageAccessToken,
+      },
+      {
+        timeout: 30000, // Increased timeout for media upload
       }
     );
 
@@ -384,37 +432,78 @@ export const postToInstagram = async (
       throw {
         message: "Failed to create media container",
         code: "MEDIA_CREATION_FAILED",
+        details: mediaResponse.data,
       };
     }
 
-    // Then publish the container
+    // Publish the container
     const publishResponse = await axios.post(
       `https://graph.facebook.com/${apiVersion}/${instagramUserId}/media_publish`,
       {
         creation_id: creationId,
         access_token: pageAccessToken,
+      },
+      {
+        timeout: 30000,
       }
     );
 
+    if (!publishResponse.data.id) {
+      throw {
+        message: "Failed to publish media",
+        code: "MEDIA_PUBLISH_FAILED",
+        details: publishResponse.data,
+      };
+    }
+
     return {
       id: publishResponse.data.id,
+      containerId: creationId,
       success: true,
+      timestamp: new Date().toISOString(),
     };
   } catch (error) {
     // Handle specific Instagram API errors
-    if (error.response?.data?.error?.code === 10) {
-      throw {
-        message: "Permission denied for Instagram posting",
-        details: error.response.data.error,
-        code: "INSTAGRAM_PERMISSION_DENIED",
-        solution: "Ensure you have instagram_content_publish permission",
-      };
+    if (error.response?.data?.error) {
+      const apiError = error.response.data.error;
+      
+      if (apiError.code === 10) {
+        throw {
+          message: "Permission denied for Instagram posting",
+          details: apiError,
+          code: "INSTAGRAM_PERMISSION_DENIED",
+          solution: "Ensure you have instagram_content_publish permission",
+          type: "INSTAGRAM_API_ERROR",
+        };
+      }
+
+      if (apiError.code === 200) {
+        throw {
+          message: "Invalid image URL or content",
+          details: apiError,
+          code: "INVALID_MEDIA",
+          type: "INSTAGRAM_API_ERROR",
+        };
+      }
+
+      if (apiError.code === 80007) {
+        throw {
+          message: "Caption exceeds maximum length (2200 characters)",
+          details: apiError,
+          code: "CAPTION_TOO_LONG",
+          type: "INSTAGRAM_API_ERROR",
+        };
+      }
+    }
+
+    // Re-throw custom errors
+    if (error.code && error.code.startsWith("MISSING_") || error.code.startsWith("MEDIA_")) {
+      throw error;
     }
 
     handleFacebookError(error, "post to Instagram");
   }
 };
-
 // In your utils/facebookAuth.js
 export const refreshFacebookToken = async (accessToken) => {
   try {
@@ -443,6 +532,7 @@ export const refreshFacebookToken = async (accessToken) => {
     handleFacebookError(error, "token refresh");
   }
 };
+
 export const createFacebookPostWithPhoto = async (req, res) => {
   try {
     const { message, pageId, accessToken } = req.body;

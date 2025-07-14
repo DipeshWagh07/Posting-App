@@ -1,12 +1,11 @@
 // import React, { useState } from 'react';
 // import axios from 'axios';
 // import './styles.css'; // Import the CSS file
-
 // function SignupForm({ onSignup, onSwitchToLogin }) {
 //     const [name, setName] = useState('');
 //     const [email, setEmail] = useState('');
 //     const [password, setPassword] = useState('');
-
+  
 //     const handleSubmit = async (e) => {
 //       e.preventDefault();
 //       try {
@@ -17,7 +16,7 @@
 //         alert('Signup failed');
 //       }
 //     };
-
+  
 //     return (
 //       <div className="form-container">
 //         <h2 className="form-title">Sign Up</h2>
@@ -50,5 +49,4 @@
 //       </div>
 //     );
 // }
-
 // export default SignupForm;

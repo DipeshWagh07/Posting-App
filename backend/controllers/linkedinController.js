@@ -50,6 +50,8 @@ export const handleCodeExchange = async (req, res) => {
   }
 };
 
+
+// Controller function to fetch LinkedIn user info using access token
 export const getLinkedInUserInfo = async (req, res) => {
   const { accessToken } = req.body;
 
@@ -74,6 +76,8 @@ export const getLinkedInUserInfo = async (req, res) => {
   }
 };
 
+
+// Controller function to create a post on LinkedIn
 export const createLinkedInPost = async (req, res) => {
   try {
     const { accessToken, text, userUrn, imageUrl } = req.body;
