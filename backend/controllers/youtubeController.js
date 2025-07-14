@@ -2,7 +2,7 @@ import {
     getYouTubeAuthUrl,
     getYouTubeTokens,
     uploadYouTubeVideo,
-    getYouTubeChannelInfo
+    getYouTubeChannelInfoEndpoint
   } from '../utils/YoutubeAuth.js';
   import multer from 'multer';
   import path from 'path';
@@ -22,7 +22,6 @@ import {
       cb(null, Date.now() + '-' + file.originalname);
     }
   });
-  
   const upload = multer({
     storage: storage,
     limits: {
@@ -84,19 +83,17 @@ import {
   // Exchange code for tokens (for frontend)
   export const handleYouTubeCodeExchange = async (req, res) => {
     const { code } = req.body;
-  
-    if (!code) {
+      if (!code) {
       return res.status(400).json({ error: 'Missing authorization code' });
-    }
-  
-    try {
+      }
+  try {
       const tokens = await getYouTubeTokens(code);
       const channelInfo = await getYouTubeChannelInfo(tokens.access_token);
-      
-      res.json({
+          res.json({
         accessToken: tokens.access_token,
         refreshToken: tokens.refresh_token,
         channelInfo
+
       });
     } catch (error) {
       console.error('YouTube token exchange failed:', error);
@@ -112,8 +109,7 @@ import {
         // Read token from Authorization header
         const accessToken = req.headers.authorization?.split(' ')[1];
   
-        if (!accessToken) {
-          return res.status(400).json({ error: 'Access token required' });
+        if (!accessToken) {  return res.status(400).json({ error: 'Access token required' });
         }
   
         if (!req.file) {
@@ -143,13 +139,57 @@ import {
       } catch (error) {
         console.error('Error uploading video to YouTube:', error);
         if (req.file?.path) {
-          try {
-            fs.unlinkSync(req.file.path);
+          try {   fs.unlinkSync(req.file.path);
           } catch {}
         }
         res.status(500).json({ error: 'Failed to upload video', details: error.message });
       }
     },
   ];
+  export { getYouTubeChannelInfoEndpoint};
 
-  export { getYouTubeChannelInfo };
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

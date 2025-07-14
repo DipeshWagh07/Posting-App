@@ -1,7 +1,6 @@
 // import React, { useState } from 'react';
 // import axios from 'axios';
 // import './styles.css'; // Import the CSS file
-
 // function SignupForm({ onSignup, onSwitchToLogin }) {
 //     const [name, setName] = useState('');
 //     const [email, setEmail] = useState('');
@@ -50,5 +49,4 @@
 //       </div>
 //     );
 // }
-
 // export default SignupForm;

@@ -34,9 +34,8 @@ export const getYouTubeTokens = async (code) => {
     throw new Error(`Failed to exchange code for tokens: ${error.message}`);
   }
 };
-
 // Get YouTube channel information
-export const getYouTubeChannelInfo = async (accessToken) => {
+export const getYouTubeChannelInfoEndpoint = async (accessToken) => {
   try {
     oauth2Client.setCredentials({ access_token: accessToken });
     const youtube = google.youtube({ version: 'v3', auth: oauth2Client });
@@ -55,7 +54,6 @@ export const getYouTubeChannelInfo = async (accessToken) => {
     throw new Error(`Failed to get channel info: ${error.message}`);
   }
 };
-
 // Upload video to YouTube
 export const uploadYouTubeVideo = async (accessToken, videoData, filePath) => {
   try {

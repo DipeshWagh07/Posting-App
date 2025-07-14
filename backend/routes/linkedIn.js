@@ -83,7 +83,7 @@ router.post('/post', async (req, res) => {
       // Post with image
       try {
         const imageAsset = await uploadImageToLinkedIn(accessToken, imagePath, userUrn);
-        
+
         postData = {
           author: userUrn,
           lifecycleState: 'PUBLISHED',

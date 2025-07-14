@@ -46,7 +46,6 @@ const LinkedInCallback = () => {
 
     fetchAccessToken();
   }, [navigate]);
-
   return (
     <div className="callback-container">
       {error ? (

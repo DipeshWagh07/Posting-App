@@ -49,7 +49,6 @@ const FacebookCallback = () => {
 
     fetchAccessToken();
   }, [navigate]);
-
   return (
     <div className="callback-container">
       {error ? (
@@ -59,8 +58,7 @@ const FacebookCallback = () => {
           <button onClick={() => navigate('/dashboard')} className="return-button">
             Return to Dashboard
           </button>
-        </div>
-      ) : (
+        </div> ) : (
         <div className="status-message">
           <div className="loader"></div>
           <p>{status}</p>
@@ -69,5 +67,4 @@ const FacebookCallback = () => {
     </div>
   );
 };
-
 export default FacebookCallback;

@@ -43,7 +43,6 @@ const YouTubeCallback = () => {
 
     handleCallback();
   }, [navigate]);
-
   return (
     <div className="callback-container">
       {error ? (
@@ -63,5 +62,4 @@ const YouTubeCallback = () => {
     </div>
   );
 };
-
-export default YouTubeCallback;
+export default YouTubeCallback ;

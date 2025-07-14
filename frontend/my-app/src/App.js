@@ -6,6 +6,7 @@ import FacebookCallback from "./components/FacebookCallback";
 import YouTubeCallback from "./components/YoutubeCallback";
 import TwitterCallback from "./components/TwitterXCallback";
 import Dashboard from "./components/Dashboard";
+import TikTokCallback from "./components/TikTokCallback";
 import "./App.css";
 
 function App() {
@@ -25,6 +26,7 @@ function App() {
             <Route path="/auth/facebook/callback" element={<FacebookCallback />} />
             <Route path="/auth/youtube/callback" element={<YouTubeCallback />} />
             <Route path="/auth/twitter/callback" element={<TwitterCallback />} />
+            <Route path="/tiktok-callback" element={<TikTokCallback />} />
           </Routes>
         </main>
         

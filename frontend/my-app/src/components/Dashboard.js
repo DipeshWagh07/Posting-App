@@ -1,442 +1,738 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import axios from "axios";
 import { getUserURN } from "../utils/linkedin";
 import "../styles.css";
 
-const Dashboard = () => {
-  const [linkedinAccessToken, setLinkedinAccessToken] = useState(
-    localStorage.getItem("linkedin_access_token") || ""
-  );
-  const [instagramAccessToken, setInstagramAccessToken] = useState(
-    localStorage.getItem("instagram_access_token") || ""
-  );
-  const [facebookAccessToken, setFacebookAccessToken] = useState(
-    localStorage.getItem("facebook_access_token") || ""
-  );
-  const [facebookPages, setFacebookPages] = useState([]);
-  const [selectedFacebookPage, setSelectedFacebookPage] = useState("");
+// Constants for platform configurations
+const PLATFORM_CONFIG = {
+  linkedin: {
+    name: "LinkedIn",
+    storageKey: "linkedin_access_token",
+    color: "#2867B2"
+  },
+  instagram: {
+    name: "Instagram",
+    storageKey: "instagram_user_id",
+    color: "#E1306C",
+    requiresFacebook: true
+  },
+  facebook: {
+    name: "Facebook",
+    storageKey: "facebook_access_token",
+    color: "#1877F2"
+  },
+  youtube: {
+    name: "YouTube",
+    storageKey: "youtube_access_token",
+    color: "#FF0000"
+  },
+  twitterX: {
+    name: "TwitterX",
+    storageKey: "twitterX_access_token",
+    color: "#000000"
+  },
+  whatsapp: {
+    name: "WhatsApp",
+    storageKey: "whatsapp_access_token",
+    color: "#25D366"
+  },
+  tiktok: {
+    name: "TikTok",
+    storageKey: "tiktok_access_token",
+    color: "#000000",
+    secondaryKey: "tiktok_open_id"
+  }
+};
 
-  const [youtubeToken, setYoutubeAccessToken] = useState(
-    localStorage.getItem("youtube_access_token") || ""
-  );
-  const [twitterXAccessToken, setTwitterXAccessToken] = useState(
-    localStorage.getItem("twitterX_access_token") || ""
-  );
-  const [postText, setPostText] = useState("");
-  const [selectedFile, setSelectedFile] = useState(null);
-  const [previewImage, setPreviewImage] = useState(null);
-  const [isPosting, setIsPosting] = useState(false);
-  const [postStatus, setPostStatus] = useState("");
-  const [selectedPlatforms, setSelectedPlatforms] = useState({
-    linkedin: false,
-    instagram: false,
-    facebook: false,
-    youtube: false,
-    twitterX: false,
+const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || "http://localhost:8000";
+
+const Dashboard = () => {
+  // State initialization
+  const [platformTokens, setPlatformTokens] = useState(() => {
+    const initialState = {};
+    Object.keys(PLATFORM_CONFIG).forEach(platform => {
+      const config = PLATFORM_CONFIG[platform];
+      initialState[platform] = localStorage.getItem(config.storageKey) || "";
+      if (config.secondaryKey) {
+        initialState[config.secondaryKey] = localStorage.getItem(config.secondaryKey) || "";
+      }
+    });
+    return initialState;
   });
 
-  useEffect(() => {
-    const linkedinToken = localStorage.getItem("linkedin_access_token");
-    const instagramToken = localStorage.getItem("instagram_access_token");
-    const facebookToken = localStorage.getItem("facebook_access_token");
-    const youtubeToken = localStorage.getItem("youtube_access_token");
-    const twitterXToken = localStorage.getItem("twitterX_access_token");
+  const [facebookPages, setFacebookPages] = useState([]);
+  const [selectedFacebookPageId, setSelectedFacebookPageId] = useState("");
+  const [postContent, setPostContent] = useState({
+    text: "",
+    file: null,
+    previewImage: null
+  });
+  const [uiState, setUiState] = useState({
+    isPosting: false,
+    status: "",
+    tiktokStatus: ""
+  });
+  const [selectedPlatforms, setSelectedPlatforms] = useState(
+    Object.keys(PLATFORM_CONFIG).reduce((acc, platform) => {
+      acc[platform] = Boolean(platformTokens[platform]);
+      return acc;
+    }, {})
+  );
 
-    if (linkedinToken) {
-      setLinkedinAccessToken(linkedinToken);
-      setSelectedPlatforms((prev) => ({ ...prev, linkedin: true }));
+  // Helper functions
+  const updatePlatformToken = useCallback((platform, token, secondaryToken = null) => {
+    const config = PLATFORM_CONFIG[platform];
+    localStorage.setItem(config.storageKey, token);
+    if (config.secondaryKey && secondaryToken) {
+      localStorage.setItem(config.secondaryKey, secondaryToken);
     }
-
-    if (instagramToken) {
-      setInstagramAccessToken(instagramToken);
-      setSelectedPlatforms((prev) => ({ ...prev, instagram: true }));
-    }
-
-    if (facebookToken) {
-      setFacebookAccessToken(facebookToken);
-      setSelectedPlatforms((prev) => ({ ...prev, facebook: true }));
-      loadFacebookPages(facebookToken);
-    }
-
-    if (youtubeToken) {
-      setYoutubeAccessToken(youtubeToken);
-      setSelectedPlatforms((prev) => ({ ...prev, youtube: true }));
-    }
-
-    if (twitterXToken) {
-      setTwitterXAccessToken(twitterXToken);
-      setSelectedPlatforms((prev) => ({ ...prev, twitterX: true }));
-    }
-
-    // Handle route state (from Twitter callback)
-    const locationState = window.history.state;
-    if (locationState?.twitterConnected) {
-      setPostStatus("Twitter connected successfully!");
-      setTimeout(() => setPostStatus(""), 3000);
-      // Clear the state
-      window.history.replaceState({}, document.title, window.location.pathname);
-    } else if (locationState?.twitterError) {
-      setPostStatus(`Error: ${locationState.twitterError}`);
-      setTimeout(() => setPostStatus(""), 5000);
-      // Clear the state
-      window.history.replaceState({}, document.title, window.location.pathname);
-    }
+    
+    setPlatformTokens(prev => ({
+      ...prev,
+      [platform]: token,
+      ...(config.secondaryKey && secondaryToken ? { [config.secondaryKey]: secondaryToken } : {})
+    }));
   }, []);
 
-  const loadFacebookPages = async (token) => {
+  const clearPlatformToken = useCallback((platform) => {
+    const config = PLATFORM_CONFIG[platform];
+    localStorage.removeItem(config.storageKey);
+    if (config.secondaryKey) {
+      localStorage.removeItem(config.secondaryKey);
+    }
+    
+    setPlatformTokens(prev => ({
+      ...prev,
+      [platform]: "",
+      ...(config.secondaryKey ? { [config.secondaryKey]: "" } : {})
+    }));
+  }, []);
+
+  // Initialize connections on component mount
+  useEffect(() => {
+    const initConnections = async () => {
+      try {
+        // Load Facebook pages if Facebook is connected
+        if (platformTokens.facebook) {
+          await loadFacebookPages(platformTokens.facebook);
+        }
+
+        // Check for TikTok callback
+        const urlParams = new URLSearchParams(window.location.search);
+        const tiktokCode = urlParams.get("code");
+        const tiktokState = urlParams.get("state");
+
+        if (tiktokCode && tiktokState) {
+          const savedState = localStorage.getItem('tiktok_auth_state');
+          if (tiktokState === savedState) {
+            await handleTikTokAuth(tiktokCode);
+          }
+          window.history.replaceState({}, document.title, window.location.pathname);
+        }
+
+        // Check token expiry periodically
+        const interval = setInterval(checkTokenExpiry, 86400000); // 24 hours
+        return () => clearInterval(interval);
+      } catch (error) {
+        console.error("Initialization error:", error);
+        setUiState(prev => ({ ...prev, status: `Initialization error: ${error.message}` }));
+      }
+    };
+
+    initConnections();
+  }, [platformTokens.facebook]);
+
+  // Facebook functions
+  const loadFacebookPages = async (userAccessToken) => {
     try {
-      const response = await axios.get(
-        "http://localhost:8000/api/facebook/pages",
+      if (!userAccessToken) throw new Error("No Facebook access token available");
+
+      let longLivedToken = localStorage.getItem("fb_long_lived_token");
+      if (!longLivedToken) {
+        longLivedToken = await exchangeForLongLivedToken(userAccessToken);
+        localStorage.setItem("fb_long_lived_token", longLivedToken);
+        updatePlatformToken("facebook", longLivedToken);
+      }
+
+      const pagesResponse = await axios.get(
+        `https://graph.facebook.com/v18.0/me/accounts`,
         {
-          headers: {
-            Authorization: `Bearer ${token}`,
+          params: {
+            access_token: longLivedToken,
+            fields: "id,name,access_token,instagram_business_account{id,username}",
           },
         }
       );
-      setFacebookPages(response.data.pages || []);
-      if (response.data.pages && response.data.pages.length > 0) {
-        setSelectedFacebookPage(response.data.pages[0].id);
+
+      const pages = await Promise.all(
+        pagesResponse.data.data.map(async (page) => {
+          try {
+            const tokenInfo = await verifyFacebookToken(page.access_token);
+            let instagramAccount = null;
+
+            if (page.instagram_business_account?.id) {
+              const instagramResponse = await axios.get(
+                `https://graph.facebook.com/v18.0/${page.instagram_business_account.id}`,
+                {
+                  params: {
+                    access_token: page.access_token,
+                    fields: "id,username,profile_picture_url",
+                  },
+                }
+              );
+              instagramAccount = instagramResponse.data;
+            }
+
+            return {
+              id: page.id,
+              name: page.name,
+              accessToken: page.access_token,
+              instagramAccount,
+              tokenExpiresAt: tokenInfo.expires_at,
+            };
+          } catch (error) {
+            console.error(`Token verification failed for page ${page.id}:`, error);
+            return null;
+          }
+        })
+      );
+
+      const validPages = pages.filter(page => page !== null);
+      if (validPages.length === 0) throw new Error("No valid pages found");
+
+      setFacebookPages(validPages);
+      localStorage.setItem("facebook_pages", JSON.stringify(validPages));
+
+      if (!selectedFacebookPageId || !validPages.some(p => p.id === selectedFacebookPageId)) {
+        setSelectedFacebookPageId(validPages[0]?.id || "");
       }
     } catch (error) {
-      console.error("Error loading Facebook pages:", error);
-    }
-  };
+      console.error("Facebook page loading error:", error);
+      setUiState(prev => ({ ...prev, status: `Facebook Error: ${error.message}` }));
 
-  const handleLogout = () => {
-    localStorage.removeItem("linkedin_access_token");
-    localStorage.removeItem("instagram_access_token");
-    localStorage.removeItem("instagram_user_id");
-    localStorage.removeItem("facebook_access_token");
-    localStorage.removeItem("facebook_pages");
-    localStorage.removeItem("youtube_access_token");
-    localStorage.removeItem("twitterX_access_token");
-    setLinkedinAccessToken("");
-    setInstagramAccessToken("");
-    setFacebookAccessToken("");
-    setYoutubeAccessToken("");
-    setTwitterXAccessToken("");
-    setFacebookPages([]);
-    setSelectedPlatforms({
-      linkedin: false,
-      instagram: false,
-      facebook: false,
-      youtube: false,
-      twitterX: false,
-    });
-  };
-
-  const handleFileChange = (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      setSelectedFile(file);
-      console.log("Selected file type:", file.type);
-      // Create image preview
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setPreviewImage(reader.result);
-      };
-      reader.readAsDataURL(file);
-    }
-  };
-
-  const handleRemoveImage = () => {
-    setSelectedFile(null);
-    setPreviewImage(null);
-  };
-
-  const handlePlatformToggle = (platform) => {
-    if (selectedPlatforms[platform]) {
-      // It's currently checked, so we are unchecking = disconnect
-      if (platform === "linkedin") {
-        localStorage.removeItem("linkedin_access_token");
-        setLinkedinAccessToken("");
-      }
-      if (platform === "instagram") {
-        localStorage.removeItem("instagram_access_token");
-        localStorage.removeItem("instagram_user_id");
-        setInstagramAccessToken("");
-      }
-      if (platform === "facebook") {
-        localStorage.removeItem("facebook_access_token");
-        localStorage.removeItem("facebook_pages");
-        setFacebookAccessToken("");
+      if (error.message.includes("invalid token") || error.message.includes("expired")) {
+        clearPlatformToken("facebook");
         setFacebookPages([]);
-      }
-      if (platform === "youtube") {
-        localStorage.removeItem("youtube_access_token");
-        localStorage.removeItem("youtube_refresh_token");
-        localStorage.removeItem("youtube_channel_id");
-        localStorage.removeItem("youtube_channel_name");
-        setYoutubeAccessToken("");
-      }
-      if (platform === "twitterX") {
-        localStorage.removeItem("twitterX_access_token");
-        setTwitterXAccessToken("");
+        setSelectedFacebookPageId("");
       }
     }
-    setSelectedPlatforms((prev) => ({
-      ...prev,
-      [platform]: !prev[platform],
-    }));
+  };
+
+  const exchangeForLongLivedToken = async (shortLivedToken) => {
+    if (!process.env.REACT_APP_FB_APP_ID || !process.env.REACT_APP_FB_APP_SECRET) {
+      throw new Error("Missing Facebook app credentials in environment variables");
+    }
+
+    const response = await axios.get(
+      `https://graph.facebook.com/v18.0/oauth/access_token`,
+      {
+        params: {
+          grant_type: "fb_exchange_token",
+          client_id: process.env.REACT_APP_FB_APP_ID,
+          client_secret: process.env.REACT_APP_FB_APP_SECRET,
+          fb_exchange_token: shortLivedToken,
+        },
+      }
+    );
+
+    if (!response.data.access_token) {
+      throw new Error("No access token returned in response");
+    }
+
+    return response.data.access_token;
+  };
+
+  const verifyFacebookToken = async (token) => {
+    const response = await axios.get(
+      `https://graph.facebook.com/debug_token`,
+      {
+        params: {
+          input_token: token,
+          access_token: `${process.env.REACT_APP_FB_APP_ID}|${process.env.REACT_APP_FB_APP_SECRET}`,
+        },
+      }
+    );
+    return response.data.data;
+  };
+
+  const checkTokenExpiry = async () => {
+    const longLivedToken = localStorage.getItem("fb_long_lived_token");
+    if (!longLivedToken) return;
+
+    try {
+      const debug = await axios.get(`https://graph.facebook.com/debug_token`, {
+        params: {
+          input_token: longLivedToken,
+          access_token: `${process.env.REACT_APP_FB_APP_ID}|${process.env.REACT_APP_FB_APP_SECRET}`,
+        },
+      });
+
+      const expiresAt = debug.data.data.expires_at;
+      const now = Math.floor(Date.now() / 1000);
+      const daysLeft = Math.floor((expiresAt - now) / 86400);
+
+      if (daysLeft < 7) {
+        const newToken = await exchangeForLongLivedToken(longLivedToken);
+        localStorage.setItem("fb_long_lived_token", newToken);
+        updatePlatformToken("facebook", newToken);
+      }
+    } catch (error) {
+      console.error("Token check failed:", error);
+    }
+  };
+
+  // Platform connection handlers
+  const handlePlatformToggle = async (platform) => {
+    if (selectedPlatforms[platform]) {
+      handleDisconnect(platform);
+    } else {
+      try {
+        setUiState(prev => ({ ...prev, status: `Connecting ${PLATFORM_CONFIG[platform].name}...` }));
+        
+        switch (platform) {
+          case "linkedin":
+            connectLinkedIn();
+            break;
+          case "instagram":
+            await connectInstagram();
+            break;
+          case "facebook":
+            connectFacebook();
+            break;
+          case "youtube":
+            connectYouTube();
+            break;
+          case "twitterX":
+            await connectTwitterX();
+            break;
+          case "whatsapp":
+            connectWhatsApp();
+            break;
+          case "tiktok":
+            await connectTikTok();
+            break;
+          default:
+            break;
+        }
+      } catch (error) {
+        console.error(`Error connecting ${platform}:`, error);
+        setUiState(prev => ({ ...prev, status: `Error connecting ${PLATFORM_CONFIG[platform].name}: ${error.message}` }));
+      }
+    }
   };
 
   const connectLinkedIn = () => {
-    const CLIENT_ID = "77igg9177iv3cg";
-    const REDIRECT_URI = "http://localhost:3000/auth/linkedin/callback";
-    const scope = "openid profile email w_member_social";
+    const CLIENT_ID = process.env.REACT_APP_LINKEDIN_CLIENT_ID || "77igg9177iv3cg";
+    const REDIRECT_URI = encodeURIComponent(
+      `${window.location.origin}/auth/linkedin/callback`
+    );
+    const scope = encodeURIComponent("openid profile email w_member_social");
     const state = Math.random().toString(36).substring(2, 15);
 
-    window.location.href = `https://www.linkedin.com/oauth/v2/authorization?response_type=code&client_id=${CLIENT_ID}&redirect_uri=${REDIRECT_URI}&scope=${encodeURIComponent(
-      scope
-    )}&state=${state}`;
+    window.location.href = `https://www.linkedin.com/oauth/v2/authorization?response_type=code&client_id=${CLIENT_ID}&redirect_uri=${REDIRECT_URI}&scope=${scope}&state=${state}`;
   };
 
-  const connectInstagram = () => {
-    const CLIENT_ID = "2056002844893910";
-    const REDIRECT_URI = "http://localhost:3000/auth/instagram/callback";
-    const scope =
-      "pages_show_list business_management instagram_basic instagram_content_publish";
+  const connectInstagram = async () => {
+    if (platformTokens.instagram) {
+      setUiState(prev => ({ ...prev, status: "Instagram is already connected" }));
+      return;
+    }
+
+    if (platformTokens.facebook && selectedFacebookPageId) {
+      const pageInfo = await axios.get(
+        `https://graph.facebook.com/v18.0/${selectedFacebookPageId}`,
+        {
+          params: {
+            fields: "instagram_business_account{id,username}",
+            access_token: platformTokens.facebook,
+          },
+        }
+      );
+
+      if (pageInfo.data.instagram_business_account) {
+        const instagramAccount = pageInfo.data.instagram_business_account;
+        updatePlatformToken("instagram", instagramAccount.id);
+        setSelectedPlatforms(prev => ({ ...prev, instagram: true }));
+        setUiState(prev => ({ ...prev, status: `Connected to Instagram account @${instagramAccount.username}` }));
+        return;
+      }
+    }
+
+    const CLIENT_ID = process.env.REACT_APP_INSTAGRAM_CLIENT_ID || "1057966605784043";
+    const REDIRECT_URI = encodeURIComponent(
+      `${window.location.origin}/auth/instagram/callback`
+    );
+    const scope = encodeURIComponent("user_profile,user_media");
     const state = Math.random().toString(36).substring(2, 15);
 
-    window.location.href = `https://api.instagram.com/oauth/authorize?client_id=${CLIENT_ID}&redirect_uri=${REDIRECT_URI}&scope=${encodeURIComponent(
-      scope
-    )}&response_type=code&state=${state}`;
+    window.location.href = `https://api.instagram.com/oauth/authorize?client_id=${CLIENT_ID}&redirect_uri=${REDIRECT_URI}&scope=${scope}&response_type=code&state=${state}`;
   };
 
   const connectFacebook = () => {
-    const CLIENT_ID = "1057966605784043";
-    const REDIRECT_URI = "http://localhost:3000/auth/facebook/callback";
-    const scope = "pages_manage_posts,pages_read_engagement,pages_show_list";
+    const CLIENT_ID = process.env.REACT_APP_FACEBOOK_CLIENT_ID || "1057966605784043";
+    const REDIRECT_URI = encodeURIComponent(
+      `${window.location.origin}/auth/facebook/callback`
+    );
+    const scope = encodeURIComponent(
+      "pages_manage_posts,pages_read_engagement,pages_show_list"
+    );
     const state = Math.random().toString(36).substring(2, 15);
 
-    window.location.href = `https://www.facebook.com/v22.0/dialog/oauth?client_id=${CLIENT_ID}&redirect_uri=${encodeURIComponent(
-      REDIRECT_URI
-    )}&scope=${encodeURIComponent(scope)}&response_type=code&state=${state}`;
+    window.location.href = `https://www.facebook.com/v22.0/dialog/oauth?client_id=${CLIENT_ID}&redirect_uri=${REDIRECT_URI}&scope=${scope}&response_type=code&state=${state}`;
   };
 
   const connectYouTube = () => {
-    window.location.href = "http://localhost:8000/auth/youtube";
+    window.location.href = `${API_BASE_URL}/auth/youtube`;
   };
 
   const connectTwitterX = async () => {
     try {
-      // Clear any existing tokens before starting new auth
-      localStorage.removeItem("twitterX_access_token");
-      localStorage.removeItem("twitterX_access_secret");
-
-      const response = await axios.get("http://localhost:8000/auth/twitter");
-      console.log("Twitter OAuth response:", response);
-
-      if (response.data && response.data.authUrl) {
-        // Redirect to Twitter auth
+      clearPlatformToken("twitterX");
+      const response = await axios.get(`${API_BASE_URL}/auth/twitter`);
+      if (response.data?.authUrl) {
         window.location.href = response.data.authUrl;
       } else {
         throw new Error("Failed to get Twitter auth URL");
       }
     } catch (error) {
       console.error("Twitter connection error:", error);
-      setPostStatus("Error: Failed to connect to Twitter");
-      setTimeout(() => setPostStatus(""), 5000);
+      setUiState(prev => ({ ...prev, status: "Error: Failed to connect to Twitter" }));
     }
   };
 
-  const handleImageUpload = async (file) => {
-    const formData = new FormData();
-    formData.append("image", file);
+  const connectWhatsApp = () => {
+    const CLIENT_ID = process.env.REACT_APP_WHATSAPP_CLIENT_ID || "1057966605784043";
+    const REDIRECT_URI = encodeURIComponent(
+      `${window.location.origin}/auth/whatsapp/callback`
+    );
+    const scope = encodeURIComponent("whatsapp_business_messaging");
+    const state = Math.random().toString(36).substring(2, 15);
 
+    window.location.href = `https://www.whatsapp.com/oauth/authorize?client_id=${CLIENT_ID}&redirect_uri=${REDIRECT_URI}&scope=${scope}&state=${state}`;
+  };
+
+  const connectTikTok = async () => {
     try {
-      const response = await axios.post(
-        "http://localhost:8000/api/upload-image",
-        formData,
-        {
-          headers: {
-            "Content-Type": "multipart/form-data",
-          },
-        }
-      );
-
-      console.log("Uploaded image URL:", response.data.imageUrl);
-      return response.data.imageUrl;
+      setUiState(prev => ({ ...prev, tiktokStatus: "Connecting to TikTok..." }));
+      clearPlatformToken("tiktok");
+      
+      const response = await axios.get(`${API_BASE_URL}/auth/tiktok`);
+      const { authUrl, state } = response.data;
+      
+      localStorage.setItem('tiktok_auth_state', state);
+      window.location.href = authUrl;
     } catch (error) {
-      console.error("Upload failed:", error);
+      setUiState(prev => ({ 
+        ...prev, 
+        tiktokStatus: `TikTok connection failed: ${error.message}` 
+      }));
+      console.error('TikTok connection error:', error);
     }
   };
 
-  const handlePost = async () => {
-    if (!postText.trim() && !selectedFile) {
-      setPostStatus("Please enter text or select an image to post");
-      return;
-    }
-
-    if (
-      !selectedPlatforms.linkedin &&
-      !selectedPlatforms.instagram &&
-      !selectedPlatforms.facebook &&
-      !selectedPlatforms.youtube &&
-      !selectedPlatforms.twitterX
-    ) {
-      setPostStatus("Please select at least one platform to post to");
-      return;
-    }
-
-    if (selectedPlatforms.facebook && !selectedFacebookPage) {
-      setPostStatus("Please select a Facebook page to post to");
-      return;
-    }
-
-    setIsPosting(true);
-    setPostStatus("Posting to selected platforms...");
-
+  const handleTikTokAuth = async (code) => {
     try {
-      let imageUrl = null;
-
-      // Upload image if needed for any platform
-      if (
-        selectedFile &&
-        (selectedPlatforms.instagram ||
-          selectedPlatforms.facebook ||
-          selectedPlatforms.linkedin ||
-          selectedPlatforms.twitterX)
-      ) {
-        imageUrl = await handleImageUpload(selectedFile);
-      }
-
-      if (selectedPlatforms.linkedin && linkedinAccessToken) {
-        const userUrn = await getUserURN(linkedinAccessToken);
-        if (!userUrn) {
-          setPostStatus(
-            "Failed to get LinkedIn user information. Please login again."
-          );
-          setIsPosting(false);
-          return;
-        }
-
-        await axios.post("http://localhost:8000/api/post-to-linkedin", {
-          accessToken: linkedinAccessToken,
-          text: postText,
-          userUrn,
-          imageUrl: imageUrl,
-        });
-      }
-
-      if (selectedPlatforms.instagram && instagramAccessToken && imageUrl) {
-        await axios.post("http://localhost:8000/api/instagram/post", {
-          accessToken: instagramAccessToken,
-          imageUrl,
-          caption: postText,
-        });
-      }
-
-      if (selectedPlatforms.facebook && facebookAccessToken) {
-        try {
-          await axios.post("http://localhost:8000/api/facebook/post", {
-            userAccessToken: facebookAccessToken,
-            pageId: selectedFacebookPage,
-            message: postText,
-            imageUrl,
-            link: null,
-            picture: null,
-          });
-        } catch (error) {
-          console.error(
-            "Facebook post failed:",
-            error.response?.data || error.message
-          );
-        }
-      }
-
-      if (selectedPlatforms.youtube && youtubeToken && selectedFile) {
-        const formData = new FormData();
-        formData.append("video", selectedFile);
-        formData.append("title", postText);
-
-        await axios.post(
-          "http://localhost:8000/api/upload-youtube-video",
-          formData,
-          {
-            headers: {
-              "Content-Type": "multipart/form-data",
-              Authorization: `Bearer ${youtubeToken}`,
-            },
-          }
-        );
-      }
-
-      if (selectedPlatforms.twitterX && twitterXAccessToken) {
-        try {
-          await axios.post(
-            "http://localhost:8000/api/twitter/post",
-            {
-              content: postText,
-              mediaUrls: imageUrl ? [imageUrl] : [],
-            },
-            {
-              withCredentials: true,
-            }
-          );
-        } catch (error) {
-          console.error("Twitter post failed:", error);
-          setPostStatus(
-            `Twitter Error: ${
-              error.response?.data?.message || "Failed to post"
-            }`
-          );
-        }
-      }
-
-      setPostStatus("Successfully posted to selected platforms!");
-      setPostText("");
-      setSelectedFile(null);
-      setPreviewImage(null);
-    } catch (err) {
-      console.error(err);
-      setPostStatus(`Error: ${err.response?.data?.error || "Failed to post"}`);
-    } finally {
-      setIsPosting(false);
-      setTimeout(() => setPostStatus(""), 5000);
+      const response = await axios.post(`${API_BASE_URL}/auth/tiktok/exchange`, { code });
+      const { access_token, open_id } = response.data;
+      
+      updatePlatformToken("tiktok", access_token, open_id);
+      setSelectedPlatforms(prev => ({ ...prev, tiktok: true }));
+      setUiState(prev => ({ 
+        ...prev, 
+        status: 'TikTok connected successfully!',
+        tiktokStatus: ''
+      }));
+    } catch (error) {
+      console.error('TikTok authentication error:', error);
+      setUiState(prev => ({ 
+        ...prev, 
+        status: `TikTok connection failed: ${error.message}` 
+      }));
     }
+  };
+
+  // Posting functions
+  const postToTikTok = async (caption, file) => {
+    if (!platformTokens.tiktok || !platformTokens.tiktokOpenId) {
+      throw new Error('Please connect to TikTok first');
+    }
+
+    if (!file || !file.type.startsWith('video/')) {
+      throw new Error('Please select a video file for TikTok');
+    }
+
+    setUiState(prev => ({ ...prev, status: 'Uploading video to TikTok...' }));
+    
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('accessToken', platformTokens.tiktok);
+    formData.append('openId', platformTokens.tiktokOpenId);
+    
+    const uploadResponse = await axios.post(
+      `${API_BASE_URL}/api/tiktok/upload`,
+      formData,
+      { headers: { 'Content-Type': 'multipart/form-data' } }
+    );
+
+    const postResponse = await axios.post(
+      `${API_BASE_URL}/api/tiktok/post`,
+      {
+        accessToken: platformTokens.tiktok,
+        openId: platformTokens.tiktokOpenId,
+        caption,
+        videoId: uploadResponse.data.videoId
+      }
+    );
+
+    return postResponse.data;
+  };
+
+  const postToInstagram = async (pageAccessToken, instagramUserId, caption, file) => {
+    const uploadForm = new FormData();
+    uploadForm.append("file", file);
+
+    const uploadResponse = await axios.post(
+      `${API_BASE_URL}/api/instagram/upload`,
+      uploadForm,
+      { headers: { "Content-Type": "multipart/form-data" } }
+    );
+
+    if (!uploadResponse.data.url) {
+      throw new Error("Failed to upload image to Cloudinary");
+    }
+
+    const postResponse = await axios.post(
+      `${API_BASE_URL}/api/instagram/post`,
+      {
+        pageAccessToken,
+        instagramUserId,
+        caption,
+        imageUrl: uploadResponse.data.url,
+      }
+    );
+
+    return postResponse.data;
   };
 
   const handleDisconnect = (platform) => {
-    if (platform === "linkedin") {
-      localStorage.removeItem("linkedin_access_token");
-      setLinkedinAccessToken("");
-    } else if (platform === "instagram") {
-      localStorage.removeItem("instagram_access_token");
-      localStorage.removeItem("instagram_user_id");
-      setInstagramAccessToken("");
-    } else if (platform === "facebook") {
-      localStorage.removeItem("facebook_access_token");
+    clearPlatformToken(platform);
+    
+    if (platform === "facebook") {
       localStorage.removeItem("facebook_pages");
-      setFacebookAccessToken("");
       setFacebookPages([]);
-      setSelectedFacebookPage("");
-    } else if (platform === "youtube") {
-      localStorage.removeItem("youtube_access_token");
-      localStorage.removeItem("youtube_refresh_token");
-      localStorage.removeItem("youtube_channel_id");
-      localStorage.removeItem("youtube_channel_name");
-      setYoutubeAccessToken("");
-    } else if (platform === "twitterX") {
-      localStorage.removeItem("twitterX_access_token");
-      setTwitterXAccessToken("");
+      setSelectedFacebookPageId("");
     }
 
-    setSelectedPlatforms((prev) => ({
+    setSelectedPlatforms(prev => ({
       ...prev,
       [platform]: false,
     }));
   };
 
+  const handleLogout = () => {
+    Object.keys(PLATFORM_CONFIG).forEach(platform => {
+      clearPlatformToken(platform);
+    });
+    
+    localStorage.removeItem("facebook_pages");
+    localStorage.removeItem("fb_long_lived_token");
+    
+    setFacebookPages([]);
+    setSelectedPlatforms(
+      Object.keys(PLATFORM_CONFIG).reduce((acc, platform) => {
+        acc[platform] = false;
+        return acc;
+      }, {})
+    );
+  };
+
+  // File handling
+  const handleFileChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      setPostContent(prev => ({
+        ...prev,
+        file,
+        previewImage: file.type.startsWith("image/") ? URL.createObjectURL(file) : null
+      }));
+    }
+  };
+
+  const handleRemoveImage = () => {
+    setPostContent(prev => ({
+      ...prev,
+      file: null,
+      previewImage: null
+    }));
+  };
+
+  // Main post handler
+  const handlePost = async () => {
+    // Validation
+    if (!postContent.text.trim() && !postContent.file) {
+      setUiState(prev => ({ ...prev, status: "Please enter text or select an image to post" }));
+      return;
+    }
+
+    if (!Object.values(selectedPlatforms).some(v => v)) {
+      setUiState(prev => ({ ...prev, status: "Please select at least one platform to post to" }));
+      return;
+    }
+
+    if (selectedPlatforms.youtube && (!postContent.file || !postContent.file.type.startsWith("video/"))) {
+      setUiState(prev => ({ ...prev, status: "A video file is required for YouTube posts" }));
+      return;
+    }
+
+    if (selectedPlatforms.tiktok && (!postContent.file || !postContent.file.type.startsWith("video/"))) {
+      setUiState(prev => ({ ...prev, status: "A video file is required for TikTok posts" }));
+      return;
+    }
+
+    setUiState(prev => ({ ...prev, isPosting: true, status: "Posting to selected platforms..." }));
+
+    try {
+      // Facebook/Instagram posting
+      if (selectedPlatforms.facebook || selectedPlatforms.instagram) {
+        const selectedPage = facebookPages.find(page => page.id === selectedFacebookPageId);
+        if (!selectedPage) throw new Error("Selected Facebook page not found");
+
+        await verifyFacebookToken(selectedPage.accessToken);
+
+        if (selectedPlatforms.facebook) {
+          const formData = new FormData();
+          formData.append("message", postContent.text);
+          if (postContent.file) formData.append("source", postContent.file);
+
+          await axios.post(
+            `https://graph.facebook.com/v18.0/${selectedPage.id}/photos`,
+            formData,
+            {
+              headers: {
+                "Content-Type": "multipart/form-data",
+                Authorization: `Bearer ${selectedPage.accessToken}`,
+              },
+            }
+          );
+        }
+
+        if (selectedPlatforms.instagram && selectedPage.instagramAccount) {
+          await postToInstagram(
+            selectedPage.accessToken,
+            selectedPage.instagramAccount.id,
+            postContent.text,
+            postContent.file
+          );
+        }
+      }
+
+      // LinkedIn posting
+      if (selectedPlatforms.linkedin && platformTokens.linkedin) {
+        const userUrn = await getUserURN(platformTokens.linkedin);
+        await axios.post(`${API_BASE_URL}/api/post-to-linkedin`, {
+          accessToken: platformTokens.linkedin,
+          text: postContent.text,
+          userUrn,
+        });
+      }
+
+      // YouTube posting
+      if (selectedPlatforms.youtube && platformTokens.youtube && postContent.file?.type.startsWith("video/")) {
+        const formData = new FormData();
+        formData.append("video", postContent.file);
+        formData.append("title", postContent.text);
+
+        await axios.post(
+          `${API_BASE_URL}/api/upload-youtube-video`,
+          formData,
+          { headers: { "Content-Type": "multipart/form-data" } }
+        );
+      }
+
+      // TikTok posting
+      if (selectedPlatforms.tiktok && platformTokens.tiktok) {
+        await postToTikTok(postContent.text, postContent.file);
+      }
+
+      // Twitter posting
+      if (selectedPlatforms.twitterX && platformTokens.twitterX) {
+        await axios.post(
+          `${API_BASE_URL}/api/twitter/post`,
+          { content: postContent.text },
+          { withCredentials: true }
+        );
+      }
+
+      // WhatsApp posting
+      if (selectedPlatforms.whatsapp && platformTokens.whatsapp) {
+        await axios.post(
+          `${API_BASE_URL}/api/whatsapp/post`,
+          { message: postContent.text },
+          { headers: { Authorization: `Bearer ${platformTokens.whatsapp}` } }
+        );
+      }
+
+      setUiState(prev => ({ 
+        ...prev, 
+        status: "Successfully posted to selected platforms!" 
+      }));
+      setPostContent({ text: "", file: null, previewImage: null });
+    } catch (error) {
+      console.error("Posting error:", error);
+      setUiState(prev => ({ 
+        ...prev, 
+        status: `Error: ${error.response?.data?.error?.message || error.message || "Failed to post"}` 
+      }));
+    } finally {
+      setUiState(prev => ({ ...prev, isPosting: false }));
+    }
+  };
+
+ const renderPlatformConnection = (platform) => {
+  const config = PLATFORM_CONFIG[platform];
+  const isConnected = Boolean(platformTokens[platform]);
+  
+  // Get platform-specific button class based on platform name
+  const buttonClass = `${platform}-button`;
+  
+  return (
+    <div className="platform-item" key={platform}>
+      <div className="platform-status">
+        <label>
+          <input
+            type="checkbox"
+            checked={selectedPlatforms[platform]}
+            onChange={() => handlePlatformToggle(platform)}
+            disabled={!isConnected && selectedPlatforms[platform]}
+          />
+          {config.name} {isConnected ? "(Connected)" : "(Not Connected)"}
+        </label>
+        {platform === "tiktok" && uiState.tiktokStatus && (
+          <div className={`status-message ${
+            uiState.tiktokStatus.includes("Error") ? "error" : "success"
+          }`}>
+            {uiState.tiktokStatus}
+          </div>
+        )}
+      </div>
+      <button
+        className={`connect-button ${buttonClass} ${isConnected ? "connected" : ""}`}
+        onClick={isConnected ? () => handleDisconnect(platform) : () => handlePlatformToggle(platform)}
+        disabled={platform === "tiktok" && uiState.tiktokStatus.includes('Connecting')}
+      >
+        {isConnected ? "Disconnect" : 
+         platform === "tiktok" && uiState.tiktokStatus.includes('Connecting') ? 
+         "Connecting..." : `Connect ${config.name}`}
+      </button>
+    </div>
+  );
+};
+
   return (
     <div className="dashboard-container">
       <header className="dashboard-header">
         <h2>Social Media Dashboard</h2>
-        {(linkedinAccessToken ||
-          instagramAccessToken ||
-          facebookAccessToken ||
-          youtubeToken ||
-          twitterXAccessToken) && (
+        {Object.values(platformTokens).some(token => token) && (
           <button className="logout-button" onClick={handleLogout}>
             Logout
           </button>
@@ -446,145 +742,15 @@ const Dashboard = () => {
       <div className="platform-connections">
         <h3>Social Media Platforms</h3>
         <div className="platform-list">
-          {/* LinkedIn Platform */}
-          <div className="platform-item">
-            <div className="platform-status">
-              <label>
-                <input
-                  type="checkbox"
-                  checked={selectedPlatforms.linkedin}
-                  onChange={() => handlePlatformToggle("linkedin")}
-                  disabled={!linkedinAccessToken}
-                />
-                LinkedIn{" "}
-                {linkedinAccessToken ? "(Connected)" : "(Not Connected)"}
-              </label>
-            </div>
-            <button
-              className="connect-button"
-              onClick={
-                linkedinAccessToken
-                  ? () => handleDisconnect("linkedin")
-                  : connectLinkedIn
-              }
-            >
-              {linkedinAccessToken ? "Disconnect LinkedIn" : "Connect LinkedIn"}
-            </button>
-          </div>
-
-          {/* Instagram Platform */}
-          <div className="platform-item">
-            <div className="platform-status">
-              <label>
-                <input
-                  type="checkbox"
-                  checked={selectedPlatforms.instagram}
-                  onChange={() => handlePlatformToggle("instagram")}
-                  disabled={!instagramAccessToken}
-                />
-                Instagram{" "}
-                {instagramAccessToken ? "(Connected)" : "(Not Connected)"}
-              </label>
-            </div>
-            <button
-              className="connect-button instagram-connect"
-              onClick={
-                instagramAccessToken
-                  ? () => handleDisconnect("instagram")
-                  : connectInstagram
-              }
-            >
-              {instagramAccessToken
-                ? "Disconnect Instagram"
-                : "Connect Instagram"}
-            </button>
-          </div>
-
-          {/* Facebook Platform */}
-          <div className="platform-item">
-            <div className="platform-status">
-              <label>
-                <input
-                  type="checkbox"
-                  checked={selectedPlatforms.facebook}
-                  onChange={() => handlePlatformToggle("facebook")}
-                  disabled={!facebookAccessToken}
-                />
-                Facebook{" "}
-                {facebookAccessToken ? "(Connected)" : "(Not Connected)"}
-              </label>
-            </div>
-            <button
-              className="connect-button facebook-connect"
-              onClick={
-                facebookAccessToken
-                  ? () => handleDisconnect("facebook")
-                  : connectFacebook
-              }
-            >
-              {facebookAccessToken ? "Disconnect Facebook" : "Connect Facebook"}
-            </button>
-          </div>
-
-          {/* YouTube Platform */}
-          <div className="platform-item">
-            <div className="platform-status">
-              <label>
-                <input
-                  type="checkbox"
-                  checked={selectedPlatforms.youtube}
-                  onChange={() => handlePlatformToggle("youtube")}
-                  disabled={!youtubeToken}
-                />
-                YouTube {youtubeToken ? "(Connected)" : "(Not Connected)"}
-              </label>
-            </div>
-            <button
-              className="youtube-button"
-              onClick={
-                youtubeToken
-                  ? () => handleDisconnect("youtube")
-                  : connectYouTube
-              }
-            >
-              {youtubeToken ? "Disconnect" : "Connect"} YouTube
-            </button>
-          </div>
-
-          {/* Twitter (X) Platform */}
-          <div className="platform-item">
-            <div className="platform-status">
-              <label>
-                <input
-                  type="checkbox"
-                  checked={selectedPlatforms.twitterX}
-                  onChange={() => handlePlatformToggle("twitterX")}
-                  disabled={!twitterXAccessToken}
-                />
-                TwitterX{" "}
-                {twitterXAccessToken ? "(Connected)" : "(Not Connected)"}
-              </label>
-            </div>
-            <button
-              className="twitter-button"
-              onClick={
-                twitterXAccessToken
-                  ? () => handleDisconnect("twitterX")
-                  : connectTwitterX
-              }
-            >
-              {twitterXAccessToken ? "Disconnect TwitterX" : "Connect TwitterX"}
-            </button>
-          </div>
+          {Object.keys(PLATFORM_CONFIG).map(platform => renderPlatformConnection(platform))}
         </div>
 
-        {/* Facebook Page Selection */}
-        {facebookAccessToken && facebookPages.length > 0 && (
+        {platformTokens.facebook && facebookPages.length > 0 && (
           <div className="facebook-page-selection">
             <h4>Select Facebook Page</h4>
             <select
-              value={selectedFacebookPage}
-              onChange={(e) => setSelectedFacebookPage(e.target.value)}
+              value={selectedFacebookPageId}
+              onChange={(e) => setSelectedFacebookPageId(e.target.value)}
               className="page-select"
             >
               {facebookPages.map((page) => (
@@ -601,11 +767,11 @@ const Dashboard = () => {
         <h3>Create a Social Media Post</h3>
         <textarea
           className="post-textarea"
-          value={postText}
-          onChange={(e) => setPostText(e.target.value)}
+          value={postContent.text}
+          onChange={(e) => setPostContent(prev => ({ ...prev, text: e.target.value }))}
           placeholder="What would you like to share?"
           rows={5}
-          disabled={isPosting}
+          disabled={uiState.isPosting}
         />
 
         <div className="file-upload-container">
@@ -614,26 +780,23 @@ const Dashboard = () => {
             id="file-upload"
             accept="image/*,video/*"
             onChange={handleFileChange}
-            disabled={isPosting}
+            disabled={uiState.isPosting}
             className="file-input"
+            style={{ display: "none" }}
           />
           <label htmlFor="file-upload" className="file-upload-label">
-            {selectedFile ? selectedFile.name : "Choose an image/video"}
+            {postContent.file ? postContent.file.name : "Choose an image/video"}
           </label>
-          {selectedPlatforms.instagram && !selectedFile && (
-            <div className="image-required-notice">
-              * An image is required for Instagram posts
-            </div>
-          )}
-          {previewImage && (
+
+          {postContent.previewImage && (
             <div className="image-preview-container">
-              <img src={previewImage} alt="Preview" className="image-preview" />
+              <img src={postContent.previewImage} alt="Preview" className="image-preview" />
               <button
                 onClick={handleRemoveImage}
                 className="remove-image-btn"
-                disabled={isPosting}
+                disabled={uiState.isPosting}
               >
-                Remove Image or Videos
+                Remove
               </button>
             </div>
           )}
@@ -643,29 +806,22 @@ const Dashboard = () => {
           className="post-button"
           onClick={handlePost}
           disabled={
-            isPosting ||
-            (!postText.trim() && !selectedFile) ||
-            (!selectedPlatforms.linkedin &&
-              !selectedPlatforms.instagram &&
-              !selectedPlatforms.facebook &&
-              !selectedPlatforms.youtube &&
-              !selectedPlatforms.twitterX) ||
-            (selectedPlatforms.instagram && !selectedFile) ||
-            (selectedPlatforms.facebook && !selectedFacebookPage) ||
-            (selectedPlatforms.youtube &&
-              (!selectedFile || !selectedFile.type.startsWith("video/")))
+            uiState.isPosting ||
+            (!postContent.text.trim() && !postContent.file) ||
+            !Object.values(selectedPlatforms).some(v => v) ||
+            (selectedPlatforms.facebook && !selectedFacebookPageId) ||
+            (selectedPlatforms.youtube && (!postContent.file || !postContent.file.type.startsWith("video/"))) ||
+            (selectedPlatforms.tiktok && (!postContent.file || !postContent.file.type.startsWith("video/")))
           }
         >
-          {isPosting ? "Posting..." : "Post to Selected Platforms"}
+          {uiState.isPosting ? "Posting..." : "Post to Selected Platforms"}
         </button>
 
-        {postStatus && (
-          <div
-            className={`status-message ${
-              postStatus.includes("Error") ? "error" : "success"
-            }`}
-          >
-            {postStatus}
+        {uiState.status && (
+          <div className={`status-message ${
+            uiState.status.includes("Error") ? "error" : "success"
+          }`}>
+            {uiState.status}
           </div>
         )}
       </div>

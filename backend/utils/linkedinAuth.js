@@ -1,7 +1,6 @@
 import axios from "axios";
 import crypto from "crypto";
 import dotenv from "dotenv";
-
 dotenv.config();
 
 // Get credentials from environment variables
@@ -19,7 +18,6 @@ export const getLinkedInAuthUrl = () => {
     redirectUri
   )}&scope=${encodeURIComponent(scope)}&state=${state}`;
 };
-
 // Function to exchange authorization code for access token
 export const getAccessToken = async (code) => {
   try {
@@ -47,7 +45,6 @@ export const getAccessToken = async (code) => {
     throw error;
   }
 };
-
 // Function to post something to LinkedIn (example)
 export const postToLinkedIn = async (accessToken, postData) => {
   try {

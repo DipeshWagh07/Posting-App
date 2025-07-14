@@ -7,8 +7,24 @@ import {
   postToFacebookPage,
   verifyFacebookToken
 } from '../utils/facebookAuth.js';
+import multer from "multer";
 
 const router = express.Router();
+
+const storage = multer.memoryStorage();
+({
+  destination: function (req, file, cb) {
+    const uploadPath = "uploads/";
+    if (!fs.existsSync(uploadPath)) {
+      fs.mkdirSync(uploadPath);
+    }
+    cb(null, uploadPath);
+  },
+  filename: function (req, file, cb) {
+    cb(null, Date.now() + "-" + file.originalname);
+  },
+});
+const upload = multer({ storage });
 
 // Health check endpoint
 router.get('/status', (req, res) => {
@@ -221,7 +237,6 @@ router.post('/post', async (req, res) => {
         });
       }
     }
-
     // Create the post
     const result = await postToFacebookPage(page.access_token, pageId, {
       message,
@@ -249,9 +264,97 @@ router.post('/post', async (req, res) => {
       error: "Failed to create post",
       details: errorDetails.message,
       code: errorDetails.type,
-      solution: errorDetails.solution || "Check permissions and content guidelines"
+      solution: errorDetails.solution || "Check permissions and content guidelines",
     });
   }
 });
 
+// Route to fetch Facebook pages and their access tokens including linked Instagram business accounts
+router.get("/page-tokens", async (req, res) => {
+  try {
+    const { access_token } = req.query;
+
+    const response = await axios.get(
+      `https://graph.facebook.com/v18.0/me/accounts`,
+      {
+        params: {
+          access_token,
+          fields:
+            "id,name,access_token,instagram_business_account{id,username}",
+        },
+      }
+    );
+   // Return a simplified response with selected fields
+    res.json({
+      pages: response.data.data.map((page) => ({
+        id: page.id,
+        name: page.name,
+        access_token: page.access_token,
+        instagram_business_account: page.instagram_business_account,
+      })),
+    });
+  } catch (error) {
+    console.error(
+      "Error fetching pages:",
+      error.response?.data || error.message
+    );
+    res.status(500).json({
+      error: "Failed to fetch pages",
+      details: error.response?.data?.error || error.message,
+    });
+  }
+});
+
+
+// Route to create a photo post on a Facebook page
+router.post(
+  "/facebook/create-post",
+  upload.single("file"),
+  async (req, res) => {
+    try {
+      const { pageId } = req.query;
+      const { message } = req.body;
+      const file = req.file;
+      // Extract access token from Authorization header
+      const accessToken = req.headers.authorization?.replace("Bearer ", "");
+
+      if (!pageId || !accessToken) {
+        return res
+          .status(400)
+          .json({ error: "pageId and access token are required" });
+      }
+
+      const formData = new FormData();
+      formData.append("message", message || "");
+      if (file) {
+        formData.append("source", fs.createReadStream(file.path), {
+          filename: file.originalname,
+          contentType: file.mimetype,
+        });
+      }
+
+      const response = await axios.post(
+        `https://graph.facebook.com/v18.0/${pageId}/photos`,
+        formData,
+        {
+          headers: {
+            ...formData.getHeaders(),
+            Authorization: `Bearer ${accessToken}`,
+          },
+        }
+      );
+
+      // Delete the uploaded file from the server after the request
+      if (file) fs.unlinkSync(file.path);
+
+      res.json(response.data);
+    } catch (error) {
+      console.error("Error:", error.response?.data || error.message);
+      res.status(500).json({
+        error: "Posting failed",
+        details: error.response?.data?.error || error.message,
+      });
+    }
+  }
+);
 export default router;
