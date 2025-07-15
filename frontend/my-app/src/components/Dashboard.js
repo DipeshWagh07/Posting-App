@@ -60,6 +60,8 @@ const Dashboard = () => {
     return initialState;
   });
 
+  const [schedulePost, setSchedulePost] = useState(false);
+  const [scheduleDateTime, setScheduleDateTime] = useState("");
   const [facebookPages, setFacebookPages] = useState([]);
   const [selectedFacebookPageId, setSelectedFacebookPageId] = useState("");
   const [postContent, setPostContent] = useState({
@@ -78,6 +80,8 @@ const Dashboard = () => {
       return acc;
     }, {})
   );
+  const [scheduledPosts, setScheduledPosts] = useState([]);
+  const [isLoadingScheduledPosts, setIsLoadingScheduledPosts] = useState(false);
 
   // Helper functions
   const updatePlatformToken = useCallback((platform, token, secondaryToken = null) => {
@@ -108,6 +112,34 @@ const Dashboard = () => {
     }));
   }, []);
 
+  // Fetch scheduled posts
+const fetchScheduledPosts = async () => {
+  try {
+    const response = await fetch('http://localhost:8000/api/scheduled-posts', {
+      credentials: 'include' // If using sessions
+    });
+    const data = await response.json();
+    console.log('Scheduled posts:', data);
+    return data;
+  } catch (error) {
+    console.error('Error fetching posts:', error);
+    return [];
+  }
+};
+
+  // Delete a scheduled post
+  const deleteScheduledPost = async (postId) => {
+    try {
+      setUiState(prev => ({ ...prev, status: "Deleting scheduled post..." }));
+      await axios.delete(`${API_BASE_URL}/api/scheduled-posts/${postId}`);
+      setScheduledPosts(prev => prev.filter(post => post._id !== postId));
+      setUiState(prev => ({ ...prev, status: "Scheduled post deleted successfully" }));
+    } catch (error) {
+      console.error("Error deleting scheduled post:", error);
+      setUiState(prev => ({ ...prev, status: "Failed to delete scheduled post" }));
+    }
+  };
+
   // Initialize connections on component mount
   useEffect(() => {
     const initConnections = async () => {
@@ -130,6 +162,9 @@ const Dashboard = () => {
           window.history.replaceState({}, document.title, window.location.pathname);
         }
 
+        // Load scheduled posts
+        await fetchScheduledPosts();
+
         // Check token expiry periodically
         const interval = setInterval(checkTokenExpiry, 86400000); // 24 hours
         return () => clearInterval(interval);
@@ -140,7 +175,7 @@ const Dashboard = () => {
     };
 
     initConnections();
-  }, [platformTokens.facebook]);
+  }, [platformTokens.facebook, fetchScheduledPosts]);
 
   // Facebook functions
   const loadFacebookPages = async (userAccessToken) => {
@@ -688,47 +723,125 @@ const Dashboard = () => {
     }
   };
 
- const renderPlatformConnection = (platform) => {
-  const config = PLATFORM_CONFIG[platform];
-  const isConnected = Boolean(platformTokens[platform]);
-  
-  // Get platform-specific button class based on platform name
-  const buttonClass = `${platform}-button`;
-  
-  return (
-    <div className="platform-item" key={platform}>
-      <div className="platform-status">
-        <label>
-          <input
-            type="checkbox"
-            checked={selectedPlatforms[platform]}
-            onChange={() => handlePlatformToggle(platform)}
-            disabled={!isConnected && selectedPlatforms[platform]}
-          />
-          {config.name} {isConnected ? "(Connected)" : "(Not Connected)"}
-        </label>
-        {platform === "tiktok" && uiState.tiktokStatus && (
-          <div className={`status-message ${
-            uiState.tiktokStatus.includes("Error") ? "error" : "success"
-          }`}>
-            {uiState.tiktokStatus}
-          </div>
-        )}
-      </div>
-      <button
-        className={`connect-button ${buttonClass} ${isConnected ? "connected" : ""}`}
-        onClick={isConnected ? () => handleDisconnect(platform) : () => handlePlatformToggle(platform)}
-        disabled={platform === "tiktok" && uiState.tiktokStatus.includes('Connecting')}
-      >
-        {isConnected ? "Disconnect" : 
-         platform === "tiktok" && uiState.tiktokStatus.includes('Connecting') ? 
-         "Connecting..." : `Connect ${config.name}`}
-      </button>
-    </div>
-  );
-};
+  const getMinDateTime = () => {
+    const now = new Date();
+    now.setMinutes(now.getMinutes() + 5);
+    return now.toISOString().slice(0, 16);
+  };
 
-  return (
+  const handleScheduledPost = async () => {
+    if (!scheduleDateTime) {
+      setUiState(prev => ({ ...prev, status: "Please select a date and time for scheduling" }));
+      return;
+    }
+
+    const scheduledTime = new Date(scheduleDateTime);
+    const now = new Date();
+    
+    if (scheduledTime <= now) {
+      setUiState(prev => ({ ...prev, status: "Scheduled time must be in the future" }));
+      return;
+    }
+
+    // Same validation as regular post
+    if (!postContent.text.trim() && !postContent.file) {
+      setUiState(prev => ({ ...prev, status: "Please enter text or select an image to post" }));
+      return;
+    }
+
+    if (!Object.values(selectedPlatforms).some(v => v)) {
+      setUiState(prev => ({ ...prev, status: "Please select at least one platform to post to" }));
+      return;
+    }
+
+    setUiState(prev => ({ ...prev, isPosting: true, status: "Scheduling post..." }));
+
+    try {
+      const formData = new FormData();
+      formData.append("text", postContent.text);
+      formData.append("scheduledTime", scheduleDateTime);
+      formData.append("platforms", JSON.stringify(selectedPlatforms));
+      formData.append("platformTokens", JSON.stringify(platformTokens));
+      formData.append("selectedFacebookPageId", selectedFacebookPageId);
+      
+      if (postContent.file) {
+        formData.append("file", postContent.file);
+      }
+
+      // const response = await axios.post(`${API_BASE_URL}/api/schedule-post`, formData, {
+      //   headers: { "Content-Type": "multipart/form-data" }
+      // });
+
+      setUiState(prev => ({ 
+        ...prev, 
+        status: `Post scheduled successfully for ${new Date(scheduleDateTime).toLocaleString()}!` 
+      }));
+      
+      // Reset form
+      setPostContent({ text: "", file: null, previewImage: null });
+      setScheduleDateTime("");
+      setSchedulePost(false);
+      
+    } catch (error) {
+      console.error("Scheduling error:", error);
+      setUiState(prev => ({ 
+        ...prev, 
+        status: `Error scheduling post: ${error.response?.data?.error || error.message}` 
+      }));
+    } finally {
+      setUiState(prev => ({ ...prev, isPosting: false }));
+    }
+  };
+
+  const handlePostSubmit = async () => {
+    if (schedulePost) {
+      await handleScheduledPost();
+    } else {
+      await handlePost();
+    }
+  };
+
+  const renderPlatformConnection = (platform) => {
+    const config = PLATFORM_CONFIG[platform];
+    const isConnected = Boolean(platformTokens[platform]);
+
+    // Get platform-specific button class based on platform name
+    const buttonClass = `${platform}-button`;
+
+    return (
+      <div className="platform-item" key={platform}>
+        <div className="platform-status">
+          <label>
+            <input
+              type="checkbox"
+              checked={selectedPlatforms[platform]}
+              onChange={() => handlePlatformToggle(platform)}
+              disabled={!isConnected && selectedPlatforms[platform]}
+            />
+            {config.name} {isConnected ? "(Connected)" : "(Not Connected)"}
+          </label>
+          {platform === "tiktok" && uiState.tiktokStatus && (
+            <div className={`status-message ${
+              uiState.tiktokStatus.includes("Error") ? "error" : "success"
+            }`}>
+              {uiState.tiktokStatus}
+            </div>
+          )}
+        </div>
+        <button
+          className={`connect-button ${buttonClass} ${isConnected ? "connected" : ""}`}
+          onClick={isConnected ? () => handleDisconnect(platform) : () => handlePlatformToggle(platform)}
+          disabled={platform === "tiktok" && uiState.tiktokStatus.includes('Connecting')}
+        >
+          {isConnected ? "Disconnect" : 
+           platform === "tiktok" && uiState.tiktokStatus.includes('Connecting') ? 
+           "Connecting..." : `Connect ${config.name}`}
+        </button>
+      </div>
+    );
+  };
+
+ return (
     <div className="dashboard-container">
       <header className="dashboard-header">
         <h2>Social Media Dashboard</h2>
@@ -739,89 +852,172 @@ const Dashboard = () => {
         )}
       </header>
 
-      <div className="platform-connections">
-        <h3>Social Media Platforms</h3>
-        <div className="platform-list">
-          {Object.keys(PLATFORM_CONFIG).map(platform => renderPlatformConnection(platform))}
-        </div>
-
-        {platformTokens.facebook && facebookPages.length > 0 && (
-          <div className="facebook-page-selection">
-            <h4>Select Facebook Page</h4>
-            <select
-              value={selectedFacebookPageId}
-              onChange={(e) => setSelectedFacebookPageId(e.target.value)}
-              className="page-select"
-            >
-              {facebookPages.map((page) => (
-                <option key={page.id} value={page.id}>
-                  {page.name}
-                </option>
-              ))}
-            </select>
+      <div className="dashboard-content">
+        <div className="platform-connections">
+          <h3>Social Media Platforms</h3>
+          <div className="platform-list">
+            {Object.keys(PLATFORM_CONFIG).map(platform => renderPlatformConnection(platform))}
           </div>
-        )}
-      </div>
 
-      <div className="post-form">
-        <h3>Create a Social Media Post</h3>
-        <textarea
-          className="post-textarea"
-          value={postContent.text}
-          onChange={(e) => setPostContent(prev => ({ ...prev, text: e.target.value }))}
-          placeholder="What would you like to share?"
-          rows={5}
-          disabled={uiState.isPosting}
-        />
-
-        <div className="file-upload-container">
-          <input
-            type="file"
-            id="file-upload"
-            accept="image/*,video/*"
-            onChange={handleFileChange}
-            disabled={uiState.isPosting}
-            className="file-input"
-            style={{ display: "none" }}
-          />
-          <label htmlFor="file-upload" className="file-upload-label">
-            {postContent.file ? postContent.file.name : "Choose an image/video"}
-          </label>
-
-          {postContent.previewImage && (
-            <div className="image-preview-container">
-              <img src={postContent.previewImage} alt="Preview" className="image-preview" />
-              <button
-                onClick={handleRemoveImage}
-                className="remove-image-btn"
-                disabled={uiState.isPosting}
+          {platformTokens.facebook && facebookPages.length > 0 && (
+            <div className="facebook-page-selection">
+              <h4>Select Facebook Page</h4>
+              <select
+                value={selectedFacebookPageId}
+                onChange={(e) => setSelectedFacebookPageId(e.target.value)}
+                className="page-select"
               >
-                Remove
-              </button>
+                {facebookPages.map((page) => (
+                  <option key={page.id} value={page.id}>
+                    {page.name}
+                  </option>
+                ))}
+              </select>
             </div>
           )}
         </div>
 
-        <button
-          className="post-button"
-          onClick={handlePost}
-          disabled={
-            uiState.isPosting ||
-            (!postContent.text.trim() && !postContent.file) ||
-            !Object.values(selectedPlatforms).some(v => v) ||
-            (selectedPlatforms.facebook && !selectedFacebookPageId) ||
-            (selectedPlatforms.youtube && (!postContent.file || !postContent.file.type.startsWith("video/"))) ||
-            (selectedPlatforms.tiktok && (!postContent.file || !postContent.file.type.startsWith("video/")))
-          }
-        >
-          {uiState.isPosting ? "Posting..." : "Post to Selected Platforms"}
-        </button>
+        <div className="post-form">
+          <h3>Create a Social Media Post</h3>
+          <textarea
+            className="post-textarea"
+            value={postContent.text}
+            onChange={(e) => setPostContent(prev => ({ ...prev, text: e.target.value }))}
+            placeholder="What would you like to share?"
+            rows={5}
+            disabled={uiState.isPosting}
+          />
 
-        {uiState.status && (
-          <div className={`status-message ${
-            uiState.status.includes("Error") ? "error" : "success"
-          }`}>
-            {uiState.status}
+          <div className="file-upload-container">
+            <input
+              type="file"
+              id="file-upload"
+              accept="image/*,video/*"
+              onChange={handleFileChange}
+              disabled={uiState.isPosting}
+              className="file-input"
+              style={{ display: "none" }}
+            />
+            <label htmlFor="file-upload" className="file-upload-label">
+              {postContent.file ? postContent.file.name : "Choose an image/video"}
+            </label>
+
+            {postContent.previewImage && (
+              <div className="image-preview-container">
+                <img src={postContent.previewImage} alt="Preview" className="image-preview" />
+                <button
+                  onClick={handleRemoveImage}
+                  className="remove-image-btn"
+                  disabled={uiState.isPosting}
+                >
+                  Remove
+                </button>
+              </div>
+            )}
+          </div>
+
+          <div className="schedule-container">
+            <div className="schedule-toggle">
+              <label>
+                <input
+                  type="checkbox"
+                  checked={schedulePost}
+                  onChange={(e) => {
+                    setSchedulePost(e.target.checked);
+                    if (!e.target.checked) {
+                      setScheduleDateTime("");
+                    }
+                  }}
+                  disabled={uiState.isPosting}
+                />
+                Schedule this post
+              </label>
+            </div>
+
+            {schedulePost && (
+              <div className="schedule-datetime">
+                <label htmlFor="schedule-datetime">Select date and time:</label>
+                <input
+                  id="schedule-datetime"
+                  type="datetime-local"
+                  value={scheduleDateTime}
+                  onChange={(e) => setScheduleDateTime(e.target.value)}
+                  min={getMinDateTime()}
+                  disabled={uiState.isPosting}
+                  className="datetime-input"
+                />
+              </div>
+            )}
+          </div>
+
+          <button
+            className="post-button"
+            onClick={handlePostSubmit}
+            disabled={
+              uiState.isPosting ||
+              (!postContent.text.trim() && !postContent.file) ||
+              !Object.values(selectedPlatforms).some(v => v) ||
+              (selectedPlatforms.facebook && !selectedFacebookPageId) ||
+              (selectedPlatforms.youtube && (!postContent.file || !postContent.file.type.startsWith("video/"))) ||
+              (selectedPlatforms.tiktok && (!postContent.file || !postContent.file.type.startsWith("video/"))) ||
+              (schedulePost && !scheduleDateTime)
+            }
+          >
+            {uiState.isPosting ? "Processing..." : schedulePost ? "Schedule Post" : "Post to Selected Platforms"}
+          </button>
+
+          {uiState.status && (
+            <div className={`status-message ${
+              uiState.status.includes("Error") ? "error" : "success"
+            }`}>
+              {uiState.status}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="scheduled-posts-section">
+        <h3>Scheduled Posts</h3>
+        {isLoadingScheduledPosts ? (
+          <div className="loading-message">Loading scheduled posts...</div>
+        ) : scheduledPosts.length === 0 ? (
+          <div className="no-posts-message">No scheduled posts found</div>
+        ) : (
+          <div className="scheduled-posts-list">
+            {scheduledPosts.map(post => (
+              <div key={post._id} className="scheduled-post-item">
+                <div className="post-content">
+                  <p className="post-text">{post.text || "(No text content)"}</p>
+                  {post.fileUrl && (
+                    <div className="post-media">
+                      {post.fileUrl.includes('image') ? (
+                        <img src={post.fileUrl} alt="Scheduled post" className="post-media-preview" />
+                      ) : (
+                        <video controls className="post-media-preview">
+                          <source src={post.fileUrl} type="video/mp4" />
+                          Your browser does not support the video tag.
+                        </video>
+                      )}
+                    </div>
+                  )}
+                  <div className="post-meta">
+                    <span className="post-platforms">
+                      Platforms: {Object.keys(post.platforms).filter(p => post.platforms[p]).join(', ')}
+                    </span>
+                    <span className="post-scheduled-time">
+                      Scheduled for: {new Date(post.scheduledTime).toLocaleString()}
+                    </span>
+                  </div>
+                </div>
+                <button
+                  onClick={() => deleteScheduledPost(post._id)}
+                  className="delete-post-button"
+                  disabled={uiState.isPosting}
+                >
+                  Delete
+                </button>
+              </div>
+            ))}
           </div>
         )}
       </div>
